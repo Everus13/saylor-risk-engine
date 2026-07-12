@@ -7,7 +7,9 @@ from torch.utils.data import DataLoader, TensorDataset
 import lightgbm as lgb
 import os
 import joblib
+import random
 import matplotlib.pyplot as plt
+
 from src.config import LIGHTGBM_MODEL_PATH, PYTORCH_MODEL_PATH, LGBM_GRID, PYTORCH_CONFIG
 from src.order_book_sim import OrderBookSimulator
 
@@ -35,17 +37,26 @@ class QuantileLoss(nn.Module):
 
 # --- PyTorch Quantile Regression MLP Model ---
 class QuantileMLP(nn.Module):
-    def __init__(self, input_dim, hidden_dims=[64, 32], output_dim=3):
+    def __init__(self, input_dim, hidden_dims=None, output_dim=3):
+        # hidden_dims is kept for backward compatibility in signature but ignored for this premium arch
         super().__init__()
-        layers = []
-        in_dim = input_dim
-        for h_dim in hidden_dims:
-            layers.append(nn.Linear(in_dim, h_dim))
-            layers.append(nn.ReLU())
-            layers.append(nn.Dropout(0.1))
-            in_dim = h_dim
-        layers.append(nn.Linear(in_dim, output_dim))
-        self.network = nn.Sequential(*layers)
+        self.network = nn.Sequential(
+            nn.Linear(input_dim, 128),
+            nn.BatchNorm1d(128),
+            nn.GELU(),
+            nn.Dropout(0.1),
+            
+            nn.Linear(128, 64),
+            nn.BatchNorm1d(64),
+            nn.GELU(),
+            nn.Dropout(0.1),
+            
+            nn.Linear(64, 32),
+            nn.BatchNorm1d(32),
+            nn.GELU(),
+            
+            nn.Linear(32, output_dim)
+        )
 
     def forward(self, x):
         return self.network(x)
@@ -332,6 +343,7 @@ class PriceImpactMLPipeline:
             if self.best_pytorch_model is None:
                 return {0.1: sell_size * 0.0005, 0.5: sell_size * 0.001, 0.9: sell_size * 0.002}
                 
+            self.best_pytorch_model.eval()
             with torch.no_grad():
                 tensor_feats = torch.tensor(feats)
                 preds = self.best_pytorch_model(tensor_feats).numpy().flatten()
