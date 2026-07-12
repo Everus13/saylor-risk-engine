@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+data/*.csv
+data/*.json
+.pytest_cache/
+.streamlit/
+*.egg-info/
+dist/
+build/
+.env

@@ -1,0 +1,55 @@
+{
+  "usd_cash_reserve": 120000000.0,
+  "quarterly_opex": 25000000.0,
+  "preferred_stock": [
+    {
+      "name": "Series A 7.75% Convertible Preferred Stock",
+      "liquidation_preference": 50000000.0,
+      "annual_dividend_rate": 0.0775,
+      "payment_months": [3, 6, 9, 12],
+      "payment_day": 15
+    }
+  ],
+  "convertible_notes": [
+    {
+      "name": "0.75% Convertible Senior Notes due 2025",
+      "principal": 650000000.0,
+      "coupon_rate": 0.0075,
+      "payment_months": [6, 12],
+      "payment_day": 15,
+      "maturity_year": 2025
+    },
+    {
+      "name": "0% Convertible Senior Notes due 2027",
+      "principal": 1050000000.0,
+      "coupon_rate": 0.0,
+      "payment_months": [2, 8],
+      "payment_day": 15,
+      "maturity_year": 2027
+    },
+    {
+      "name": "0.625% Convertible Senior Notes due 2030",
+      "principal": 800000000.0,
+      "coupon_rate": 0.00625,
+      "payment_months": [3, 9],
+      "payment_day": 15,
+      "maturity_year": 2030
+    },
+    {
+      "name": "0.875% Convertible Senior Notes due 2031",
+      "principal": 600000000.0,
+      "coupon_rate": 0.00875,
+      "payment_months": [3, 9],
+      "payment_day": 15,
+      "maturity_year": 2031
+    },
+    {
+      "name": "2.25% Convertible Senior Notes due 2032",
+      "principal": 1010000000.0,
+      "coupon_rate": 0.0225,
+      "payment_months": [6, 12],
+      "payment_day": 15,
+      "maturity_year": 2032
+    }
+  ]
+}

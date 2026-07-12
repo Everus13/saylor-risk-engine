@@ -1,0 +1,24 @@
+# Financial Data & API
+yfinance>=0.2.38
+ccxt>=4.2.82
+
+# Data Processing & Math
+pandas>=2.2.0
+numpy>=1.26.0
+scikit-learn>=1.4.0
+
+# Machine Learning
+lightgbm>=4.3.0
+torch>=2.2.0
+
+# Reinforcement Learning
+gymnasium>=0.29.1
+stable-baselines3[extra]>=2.2.1
+
+# Visualization & App
+streamlit>=1.32.0
+plotly>=5.19.0
+matplotlib>=3.8.0
+
+# Testing
+pytest>=8.0.0
