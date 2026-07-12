@@ -2,6 +2,12 @@ import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 import random
+import logging
+from typing import Dict, List, Tuple, Any, Optional
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
 from src.order_book_sim import OrderBookSimulator
 
 class OptimalExecutionEnv(gym.Env):
@@ -18,16 +24,16 @@ class OptimalExecutionEnv(gym.Env):
         total_steps: int = 15,        # time steps to execute the order
         mid_price: float = 60000.0,   # starting mid price
         depth_scale: float = 12.0     # L2 book depth scale (liquidity)
-    ):
+    ) -> None:
         super().__init__()
-        self.total_volume = total_volume
-        self.total_steps = total_steps
-        self.starting_mid_price = mid_price
-        self.depth_scale = depth_scale
+        self.total_volume: float = total_volume
+        self.total_steps: int = total_steps
+        self.starting_mid_price: float = mid_price
+        self.depth_scale: float = depth_scale
 
         # Action Space: continuous value in [0.0, 1.0] representing
         # the fraction of REMAINING volume to sell in this step.
-        self.action_space = spaces.Box(low=0.0, high=1.0, shape=(1,), dtype=np.float32)
+        self.action_space: spaces.Box = spaces.Box(low=0.0, high=1.0, shape=(1,), dtype=np.float32)
 
         # Observation Space:
         # 1. remaining_volume_pct [0, 1]
@@ -35,14 +41,21 @@ class OptimalExecutionEnv(gym.Env):
         # 3. spread_pct [-1, 1] (rescaled)
         # 4. book_imbalance [-1, 1]
         # 5. price_deviation_pct [-1, 1] (how much mid price moved from start)
-        self.observation_space = spaces.Box(
+        self.observation_space: spaces.Box = spaces.Box(
             low=-2.0, high=2.0, shape=(5,), dtype=np.float32
         )
 
-        self.reset_count = 0
+        self.reset_count: int = 0
+        self.mid_price: float = mid_price
+        self.arrival_price: float = mid_price
+        self.remaining_volume: float = total_volume
+        self.current_step: int = 0
+        self.order_book: Dict[str, Any] = {}
+        self.history: List[Dict[str, Any]] = []
+        
         self.reset()
 
-    def reset(self, seed=None, options=None):
+    def reset(self, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None) -> Tuple[np.ndarray, Dict[str, Any]]:
         super().reset(seed=seed)
         
         # Randomize start parameters slightly to improve generalization
@@ -64,12 +77,12 @@ class OptimalExecutionEnv(gym.Env):
         
         return self._get_observation(), {}
 
-    def _get_observation(self):
+    def _get_observation(self) -> np.ndarray:
         remaining_vol_pct = self.remaining_volume / self.total_volume
         remaining_time_pct = (self.total_steps - self.current_step) / self.total_steps
         
-        best_bid = self.order_book["bids"][0][0]
-        best_ask = self.order_book["asks"][0][0]
+        best_bid = float(self.order_book["bids"][0][0])
+        best_ask = float(self.order_book["asks"][0][0])
         spread = best_ask - best_bid
         spread_pct = (spread / self.mid_price) * 100.0
         
@@ -91,7 +104,7 @@ class OptimalExecutionEnv(gym.Env):
         
         return obs
 
-    def step(self, action):
+    def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
         # Action is a float inside [0, 1]
         action_val = float(np.clip(action[0], 0.0, 1.0))
         
@@ -112,15 +125,14 @@ class OptimalExecutionEnv(gym.Env):
         
         if sell_qty > 0:
             sim = OrderBookSimulator.simulate_market_sell(self.order_book, sell_qty)
-            vwap = sim["vwap"]
-            slippage_pct = sim["slippage_pct"]
-            filled_qty = sim["filled_amount"]
+            vwap = float(sim["vwap"])
+            slippage_pct = float(sim["slippage_pct"])
+            filled_qty = float(sim["filled_amount"])
             
             # Reduce inventory
             self.remaining_volume -= filled_qty
         
         # Update market price (Random walk / GBM with drift from sales)
-        # Sell orders push the price down (market impact)
         market_impact_impact = sell_qty * 0.0001  # simple price impact multiplier
         price_drift = -market_impact_impact + random.normalvariate(0, self.mid_price * 0.001)
         self.mid_price = max(1000.0, self.mid_price + price_drift)
@@ -134,27 +146,20 @@ class OptimalExecutionEnv(gym.Env):
         )
         
         # Calculate Reward
-        # We penalize slippage (deviation from mid_price / arrival_price)
-        # We also penalize holding inventory to mitigate risk (price drop)
         execution_reward = 0.0
         if filled_qty > 0:
-            # Slippage cost term (relative to arrival price)
             execution_cost = (self.arrival_price - vwap) / self.arrival_price
-            # Reward: minimize cost
             execution_reward = -execution_cost * (filled_qty / self.total_volume) * 100.0
             
-        # Inventory penalty (holding risk)
         inventory_penalty = -0.05 * (self.remaining_volume / self.total_volume)
         
-        # Penalty for failing to sell everything (should be 0 since we force-execute on last step,
-        # but just in case of volume constraints):
         shortfall_penalty = 0.0
         if is_last_step and self.remaining_volume > 0:
             shortfall_penalty = -5.0 * (self.remaining_volume / self.total_volume)
             
         reward = execution_reward + inventory_penalty + shortfall_penalty
         
-        # Save history for rendering/logging
+        # Save history
         self.history.append({
             "step": self.current_step,
             "action": action_val,
@@ -172,7 +177,11 @@ class OptimalExecutionEnv(gym.Env):
         
         return self._get_observation(), float(reward), terminated, truncated, {}
 
-    def render(self, mode="human"):
+    def render(self, mode: str = "human") -> None:
         if len(self.history) > 0:
             last = self.history[-1]
-            print(f"Step {last['step']}: Action={last['action']:.3f} | Sold={last['filled_qty']:.2f} BTC | VWAP={last['vwap']:.2f} | Remaining={last['remaining_volume']:.2f} BTC | Price={last['mid_price']:.2f}")
+            logging.info(
+                f"Step {last['step']}: Action={last['action']:.3f} | "
+                f"Sold={last['filled_qty']:.2f} BTC | VWAP={last['vwap']:.2f} | "
+                f"Remaining={last['remaining_volume']:.2f} BTC | Price={last['mid_price']:.2f}"
+            )
