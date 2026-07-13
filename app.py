@@ -267,7 +267,7 @@ with tab_impact:
     
     with col1:
         st.subheader("Параметры рыночной продажи")
-        sell_qty = st.number_input("Объем продажи (BTC)", min_value=1.0, max_value=5000.0, value=150.0, step=5.0, help="Объем продажи Биткоина в штуках. Вы можете ввести любое число вручную.")
+        sell_qty = st.number_input("Объем продажи (BTC)", min_value=1.0, max_value=50000.0, value=150.0, step=5.0, help="Объем продажи Биткоина в штуках. Вы можете ввести любое число вручную.")
         
         exchange_select = st.selectbox("Источник стакана ордеров", ["Бинанс (Синтетическая глубина)", "CCXT Binance Live L2"])
         
@@ -397,7 +397,7 @@ with tab_rl:
     
     with col_l:
         st.subheader("Настройки симуляции исполнения")
-        exec_volume = st.number_input("Общий объем продажи (BTC)", min_value=10.0, max_value=2000.0, value=300.0, step=50.0)
+        exec_volume = st.number_input("Общий объем продажи (BTC)", min_value=10.0, max_value=50000.0, value=300.0, step=50.0)
         exec_steps = st.slider("Временные интервалы (шаги исполнения)", min_value=5, max_value=30, value=15)
         
         strategy_options = ["twap", "rl"]
