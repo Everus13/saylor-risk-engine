@@ -71,8 +71,8 @@ h1, h2, h3, h4, h5, h6 {
   flex-direction: column;
   min-height: 100vh;
   background-image: 
-    radial-gradient(at 0% 0%, rgba(212, 175, 55, 0.03) 0, transparent 50%),
-    radial-gradient(at 50% 0%, rgba(49, 130, 206, 0.03) 0, transparent 50%);
+    radial-gradient(at 0% 0%, rgba(247, 147, 26, 0.03) 0, transparent 50%),
+    radial-gradient(at 50% 0%, rgba(255, 255, 255, 0.02) 0, transparent 50%);
 }
 
 .header {
@@ -80,7 +80,7 @@ h1, h2, h3, h4, h5, h6 {
   justify-content: space-between;
   align-items: center;
   padding: 16px 24px;
-  background-color: rgba(13, 18, 29, 0.8);
+  background-color: rgba(10, 11, 13, 0.85);
   border-bottom: 1px solid var(--border-color);
   backdrop-filter: blur(12px);
   position: sticky;
@@ -104,7 +104,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .logo-badge {
-  background: rgba(212, 175, 55, 0.1);
+  background: rgba(247, 147, 26, 0.1);
   border: 1px solid var(--gold);
   color: var(--gold);
   padding: 2px 6px;
@@ -137,8 +137,8 @@ h1, h2, h3, h4, h5, h6 {
 
 .nav-tab.active {
   color: var(--gold);
-  background-color: rgba(212, 175, 55, 0.08);
-  border: 1px solid rgba(212, 175, 55, 0.3);
+  background-color: rgba(247, 147, 26, 0.08);
+  border: 1px solid rgba(247, 147, 26, 0.3);
   text-shadow: 0 0 8px var(--gold-glow);
 }
 
