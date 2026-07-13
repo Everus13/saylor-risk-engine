@@ -185,8 +185,18 @@ with tab_debt:
         use_sec_debt=use_sec_debt
     )
     
+    # Оценка импакта по PyTorch для Tab 1
+    if reqs['btc_to_sell_stress_case'] > 0:
+        book_tab1 = OrderBookSimulator.generate_synthetic_order_book(mid_price=btc_price_input)
+        torch_preds_tab1 = ml_pipeline.predict_impact(book_tab1, reqs['btc_to_sell_stress_case'], model_type="pytorch")
+        torch_impact_val = torch_preds_tab1[0.5]
+        torch_impact_worst = torch_preds_tab1[0.9]
+    else:
+        torch_impact_val = 0.0
+        torch_impact_worst = 0.0
+
     # Карточки финансовых показателей
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
         st.metric(
             label="Всего обязательств к выплате",
@@ -204,10 +214,18 @@ with tab_debt:
         )
     with col4:
         st.metric(
-            label="BTC к продаже (Стресс-сценарий)",
+            label="BTC к продаже (Стресс)",
             value=f"{reqs['btc_to_sell_stress_case']:.2f} BTC",
-            delta="Базовый сценарий (ATM): 0.00 BTC",
+            delta="Базовый (ATM): 0.00 BTC",
             delta_color="inverse"
+        )
+    with col5:
+        st.metric(
+            label="Оценка падения BTC (PyTorch)",
+            value=f"-{torch_impact_val:.4f}%" if torch_impact_val > 0 else "0.0000%",
+            delta=f"Худший случай: -{torch_impact_worst:.4f}%" if torch_impact_worst > 0 else None,
+            delta_color="inverse",
+            help="Прогнозная оценка падения цены Биткоина на основе обученной нейросети PyTorch Deep MLP."
         )
         
     st.warning("⚠️ **Стресс-сценарий** предполагает полную приостановку или невозможность допэмиссии акций MSTR (программы ATM), что вынуждает компанию ликвидировать резервы Биткоина для покрытия текущих платежей.")
@@ -295,9 +313,11 @@ with tab_impact:
             delta=f"Средняя цена продажи: ${sim_res['vwap']:,.2f}"
         )
         st.metric(
-            label="Предельное падение цены (Marginal Impact)", 
-            value=f"{sim_res['price_impact_pct']:.4f}%",
-            delta=f"Худшая цена исполнения: ${sim_res['marginal_price']:,.2f}"
+            label="Предельное падение цены (PyTorch MLP)", 
+            value=f"-{torch_preds[0.5]:.4f}%",
+            delta=f"Худший случай (90% квантиль): -{torch_preds[0.9]:.4f}%",
+            delta_color="inverse",
+            help=f"Прогноз обученной нейросети. Фактическое проедание стакана (ограничено его текущей глубиной): -{sim_res['price_impact_pct']:.4f}%"
         )
         
     with col2:
