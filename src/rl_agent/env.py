@@ -23,13 +23,15 @@ class OptimalExecutionEnv(gym.Env):
         total_volume: float = 500.0,  # BTC to sell
         total_steps: int = 15,        # time steps to execute the order
         mid_price: float = 60000.0,   # starting mid price
-        depth_scale: float = 12.0     # L2 book depth scale (liquidity)
+        depth_scale: float = 12.0,    # L2 book depth scale (liquidity)
+        otc_pct: float = 0.0          # Percentage of sale volume routed via OTC
     ) -> None:
         super().__init__()
         self.total_volume: float = total_volume
         self.total_steps: int = total_steps
         self.starting_mid_price: float = mid_price
         self.depth_scale: float = depth_scale
+        self.otc_pct: float = otc_pct
 
         # Action Space: continuous value in [0.0, 1.0] representing
         # the fraction of REMAINING volume to sell in this step.
@@ -124,16 +126,36 @@ class OptimalExecutionEnv(gym.Env):
         filled_qty = 0.0
         
         if sell_qty > 0:
-            sim = OrderBookSimulator.simulate_market_sell(self.order_book, sell_qty)
-            vwap = float(sim["vwap"])
-            slippage_pct = float(sim["slippage_pct"])
-            filled_qty = float(sim["filled_amount"])
+            # Route percentage to OTC and rest to L2 Book
+            otc_qty = sell_qty * (self.otc_pct / 100.0)
+            market_qty = sell_qty - otc_qty
+            
+            total_value = 0.0
+            best_bid = float(self.order_book["bids"][0][0]) if len(self.order_book["bids"]) > 0 else self.mid_price
+            
+            if otc_qty > 0:
+                # OTC execution executes at a fixed 0.05% discount from the best bid
+                vwap_otc = best_bid * (1.0 - 0.0005)
+                total_value += otc_qty * vwap_otc
+                filled_qty += otc_qty
+                
+            if market_qty > 0:
+                sim = OrderBookSimulator.simulate_market_sell(self.order_book, market_qty)
+                vwap_mkt = float(sim["vwap"])
+                filled_mkt = float(sim["filled_amount"])
+                total_value += filled_mkt * vwap_mkt
+                filled_qty += filled_mkt
+            
+            vwap = total_value / filled_qty if filled_qty > 0 else self.mid_price
+            slippage_pct = ((best_bid - vwap) / best_bid) * 100.0 if best_bid > 0 and vwap > 0 else 0.0
             
             # Reduce inventory
             self.remaining_volume -= filled_qty
         
         # Update market price (Random walk / GBM with drift from sales)
-        market_impact_impact = sell_qty * 0.0001  # simple price impact multiplier
+        # OTC transactions have lower direct market impact on standard exchanges (e.g. 10x lower impact)
+        market_qty_effective = (sell_qty - sell_qty * (self.otc_pct / 100.0)) + 0.1 * (sell_qty * (self.otc_pct / 100.0))
+        market_impact_impact = market_qty_effective * 0.0001
         price_drift = -market_impact_impact + random.normalvariate(0, self.mid_price * 0.001)
         self.mid_price = max(1000.0, self.mid_price + price_drift)
         

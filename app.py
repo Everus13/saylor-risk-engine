@@ -399,6 +399,8 @@ with tab_rl:
         st.subheader("Настройки симуляции исполнения")
         exec_volume = st.number_input("Общий объем продажи (BTC)", min_value=10.0, max_value=50000.0, value=300.0, step=50.0)
         exec_steps = st.slider("Временные интервалы (шаги исполнения)", min_value=5, max_value=30, value=15)
+        depth_scale_rl = st.number_input("Ликвидность стакана (Depth Scale)", min_value=1.0, max_value=1000.0, value=12.0, step=5.0, help="Масштаб ликвидности. Чем больше значение, тем глубже стакан и тем больше BTC можно продать за раз.")
+        otc_pct_rl = st.slider("Доля внебиржевой продажи (OTC %)", min_value=0, max_value=100, value=0, step=5, help="Процент объема продажи, направляемый через OTC-деск вне биржевого стакана.")
         
         strategy_options = ["twap", "rl"]
         selected_strat = st.selectbox(
@@ -424,7 +426,9 @@ with tab_rl:
                         total_timesteps=int(timesteps_input),
                         total_volume=exec_volume,
                         total_steps=exec_steps,
-                        mid_price=btc_price_input
+                        mid_price=btc_price_input,
+                        depth_scale=depth_scale_rl,
+                        otc_pct=otc_pct_rl
                     )
                     st.success("RL-агент успешно обучен и сохранен!")
                 except Exception as e:
@@ -439,7 +443,9 @@ with tab_rl:
                         total_volume=exec_volume,
                         total_steps=exec_steps,
                         starting_mid_price=btc_price_input,
-                        strategy=selected_strat
+                        strategy=selected_strat,
+                        depth_scale=depth_scale_rl,
+                        otc_pct=otc_pct_rl
                     )
                     
                     # Запуск TWAP для сравнения
@@ -447,7 +453,9 @@ with tab_rl:
                         total_volume=exec_volume,
                         total_steps=exec_steps,
                         starting_mid_price=metrics_strat["arrival_price"],
-                        strategy="twap"
+                        strategy="twap",
+                        depth_scale=depth_scale_rl,
+                        otc_pct=otc_pct_rl
                     )
                     
                     st.subheader("Сводные результаты исполнения")
