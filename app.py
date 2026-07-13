@@ -189,9 +189,7 @@ with tab_debt:
     with col1:
         st.metric(
             label="Всего обязательств к выплате",
-            value=f"${reqs['total_usd_required']:,.2f}",
-            delta=f"Расходы Opex: ${reqs['breakdown']['total_opex_usd']:,.2f}",
-            delta_color="normal"
+            value=f"${reqs['total_usd_required']:,.2f}"
         )
     with col2:
         st.metric(
