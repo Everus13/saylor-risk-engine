@@ -108,9 +108,9 @@ mstr_price_input = st.sidebar.number_input(
 cash_reserve_input = st.sidebar.slider(
     "Долларовый резерв кэша MSTR ($ млн)", 
     min_value=0.0, 
-    max_value=1000.0, 
-    value=float(tracker.data.get("usd_cash_reserve", 120000000.0) / 1e6),
-    step=10.0
+    max_value=5000.0, 
+    value=float(tracker.data.get("usd_cash_reserve", 3000000000.0) / 1e6),
+    step=50.0
 ) * 1e6
 
 # Обновляем резерв кэша в модели
