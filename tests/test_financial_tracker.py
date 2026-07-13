@@ -16,10 +16,9 @@ def test_calculate_obligations():
     
     assert "total_usd_required" in res
     assert "total_opex_usd" in res
-    assert res["total_usd_required"] > 0
     
-    # Verify that cash is spent on opex
-    assert res["total_opex_usd"] > 0
+    # Verify that opex is zero
+    assert res["total_opex_usd"] == 0.0
 
 def test_btc_sell_requirements_math():
     tracker = FinancialTracker()

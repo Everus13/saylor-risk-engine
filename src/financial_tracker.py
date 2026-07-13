@@ -70,11 +70,6 @@ class FinancialTracker:
         total_coupons = 0.0
         total_dividends = 0.0
         
-        # Calculate daily opex
-        quarterly_opex = float(self.data.get("quarterly_opex", 25000000.0))
-        daily_opex = quarterly_opex / 90.0
-        total_opex = daily_opex * days_forecast
-
         # Iterate day by day in the range to match scheduled payment dates
         curr_date = start_date
         while curr_date <= end_date:
@@ -115,21 +110,13 @@ class FinancialTracker:
                         
             curr_date += datetime.timedelta(days=1)
 
-        # Add OPEX as a lump sum
-        payments.append({
-            "date": end_date,
-            "type": "Операционные расходы (Opex)",
-            "name": f"Opex на {days_forecast} дн.",
-            "amount_usd": total_opex
-        })
-
-        total_usd = total_coupons + total_dividends + total_opex
+        total_usd = total_coupons + total_dividends
 
         return {
             "payments_breakdown": payments,
             "total_coupons_usd": total_coupons,
             "total_dividends_usd": total_dividends,
-            "total_opex_usd": total_opex,
+            "total_opex_usd": 0.0,
             "total_usd_required": total_usd
         }
 
@@ -224,11 +211,6 @@ class FinancialTracker:
         total_coupons = 0.0
         total_dividends = 0.0
         
-        # Calculate daily opex
-        quarterly_opex = float(self.data.get("quarterly_opex", 25000000.0))
-        daily_opex = quarterly_opex / 90.0
-        total_opex = daily_opex * days_forecast
-
         notes = self.data.get("convertible_notes", [])
         
         # Calculate unallocated debt difference if sync enabled
@@ -294,20 +276,13 @@ class FinancialTracker:
                         
             curr_date += datetime.timedelta(days=1)
 
-        payments.append({
-            "date": end_date,
-            "type": "Операционные расходы (Opex)",
-            "name": f"Opex на {days_forecast} дн.",
-            "amount_usd": total_opex
-        })
-
-        total_usd = total_coupons + total_dividends + total_opex
+        total_usd = total_coupons + total_dividends
 
         return {
             "payments_breakdown": payments,
             "total_coupons_usd": total_coupons,
             "total_dividends_usd": total_dividends,
-            "total_opex_usd": total_opex,
+            "total_opex_usd": 0.0,
             "total_usd_required": total_usd
         }
 
