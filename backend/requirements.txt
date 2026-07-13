@@ -22,3 +22,10 @@ matplotlib>=3.8.0
 
 # Testing
 pytest>=8.0.0
+
+# Web Backend & Database
+fastapi>=0.109.0
+uvicorn>=0.27.0
+websockets>=12.0
+sqlalchemy>=2.0.0
+

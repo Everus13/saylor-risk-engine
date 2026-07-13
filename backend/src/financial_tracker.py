@@ -12,6 +12,23 @@ class FinancialTracker:
     def __init__(self, schedule_path: str = DEBT_SCHEDULE_PATH) -> None:
         self.schedule_path: str = schedule_path
         self.data: Dict[str, Any] = self._load_schedule()
+        
+        # Override reserve from database if exists
+        try:
+            from backend.src.database import get_setting
+            db_reserve = get_setting("usd_cash_reserve")
+            if db_reserve:
+                self.data["usd_cash_reserve"] = float(db_reserve)
+        except ImportError:
+            try:
+                from src.database import get_setting
+                db_reserve = get_setting("usd_cash_reserve")
+                if db_reserve:
+                    self.data["usd_cash_reserve"] = float(db_reserve)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     def _load_schedule(self) -> Dict[str, Any]:
         try:
@@ -28,8 +45,19 @@ class FinancialTracker:
             }
 
     def update_cash_reserve(self, new_reserve: float) -> None:
-        """Update USD cash reserve in memory."""
+        """Update USD cash reserve in memory and database."""
         self.data["usd_cash_reserve"] = new_reserve
+        try:
+            from backend.src.database import set_setting
+            set_setting("usd_cash_reserve", str(new_reserve))
+        except ImportError:
+            try:
+                from src.database import set_setting
+                set_setting("usd_cash_reserve", str(new_reserve))
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     def get_current_prices(self) -> Dict[str, float]:
         """Fetch current prices of BTC and MSTR via yfinance with fallbacks."""
