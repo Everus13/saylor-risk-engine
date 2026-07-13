@@ -8,8 +8,8 @@ import {
   AlertTriangle, ArrowRight, Play, Loader, Award, DollarSign, Layers 
 } from 'lucide-react';
 
-const API_BASE = "http://localhost:8000/api";
-const WS_BASE = "ws://localhost:8000/ws";
+const API_BASE = "http://127.0.0.1:8000/api";
+const WS_BASE = "ws://127.0.0.1:8000/ws";
 
 function App() {
   const [activeTab, setActiveTab] = useState("debt");

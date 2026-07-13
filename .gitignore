@@ -1,12 +1,30 @@
+# Virtual Environment
 venv/
+
+# Python caching & bytecode
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
-data/*.csv
-data/*.json
 .pytest_cache/
-.streamlit/
 *.egg-info/
+backend/__pycache__/
+backend/src/__pycache__/
+backend/src/rl_agent/__pycache__/
+
+# Node / Frontend dependencies & builds
+node_modules/
+frontend/node_modules/
+frontend/dist/
 dist/
 build/
 .env
+.env.local
+
+# Databases and Local State
+backend/data/mstr_btc.db
+backend/data/mstr_btc.db-journal
+backend/data/mstr_btc.db-wal
+backend/data/mstr_btc.db-shm
+
+# Streamlit legacy configs
+.streamlit/
