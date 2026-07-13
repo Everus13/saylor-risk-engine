@@ -105,12 +105,13 @@ mstr_price_input = st.sidebar.number_input(
     step=5.0
 )
 
-cash_reserve_input = st.sidebar.slider(
+cash_reserve_input = st.sidebar.number_input(
     "Долларовый резерв кэша MSTR ($ млн)", 
     min_value=0.0, 
-    max_value=5000.0, 
+    max_value=10000.0, 
     value=float(tracker.data.get("usd_cash_reserve", 3000000000.0) / 1e6),
-    step=50.0
+    step=50.0,
+    help="Долларовый резерв кэша MicroStrategy. Позволяет вводить точные значения вручную."
 ) * 1e6
 
 # Обновляем резерв кэша в модели
@@ -266,7 +267,7 @@ with tab_impact:
     
     with col1:
         st.subheader("Параметры рыночной продажи")
-        sell_qty = st.slider("Объем продажи (BTC)", min_value=1.0, max_value=1000.0, value=150.0, step=5.0)
+        sell_qty = st.number_input("Объем продажи (BTC)", min_value=1.0, max_value=5000.0, value=150.0, step=5.0, help="Объем продажи Биткоина в штуках. Вы можете ввести любое число вручную.")
         
         exchange_select = st.selectbox("Источник стакана ордеров", ["Бинанс (Синтетическая глубина)", "CCXT Binance Live L2"])
         
