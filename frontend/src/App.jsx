@@ -464,7 +464,7 @@ function App() {
                             <YAxis stroke="#94a3b8" />
                             <Tooltip contentStyle={{ backgroundColor: "#0d121d", borderColor: "#1e293b" }} />
                             <Legend />
-                            <Bar dataKey="amount_usd" name="Сумма выплат ($)" fill="#d4af37" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="amount_usd" name="Сумма выплат ($)" fill="#f7931a" radius={[4, 4, 0, 0]} />
                           </BarChart>
                         </ResponsiveContainer>
                       </div>

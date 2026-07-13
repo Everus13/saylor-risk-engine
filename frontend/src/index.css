@@ -1,18 +1,18 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Roboto+Mono:wght@400;500;700&display=swap');
 
 :root {
-  --bg-primary: #05070a;
-  --bg-secondary: #0d121d;
-  --bg-tertiary: #161f30;
-  --border-color: #1e293b;
-  --border-glow: #e2b43b;
+  --bg-primary: #000000;
+  --bg-secondary: #0a0b0d;
+  --bg-tertiary: #14161a;
+  --border-color: #1f2229;
+  --border-glow: #f7931a;
   
-  --text-primary: #f8fafc;
+  --text-primary: #ffffff;
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
   
-  --gold: #d4af37;
-  --gold-glow: rgba(212, 175, 55, 0.15);
+  --gold: #f7931a;
+  --gold-glow: rgba(247, 147, 26, 0.15);
   
   --green: #00e676;
   --green-glow: rgba(0, 230, 118, 0.15);
