@@ -71,7 +71,8 @@ class RLExecutionTrainer:
         starting_mid_price: float = 60000.0,
         strategy: str = "rl",
         depth_scale: float = 12.0,
-        otc_pct: float = 0.0
+        otc_pct: float = 0.0,
+        seed: Optional[int] = None
     ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
         """
         Run a single execution episode using the specified strategy.
@@ -79,6 +80,13 @@ class RLExecutionTrainer:
           - df: pandas DataFrame containing the step-by-step history
           - metrics: dict of summary metrics
         """
+        if seed is not None:
+            import random
+            import numpy as np
+            import torch
+            random.seed(seed)
+            np.random.seed(seed)
+            torch.manual_seed(seed)
         env = OptimalExecutionEnv(
             total_volume=total_volume,
             total_steps=total_steps,

@@ -50,6 +50,7 @@ function App() {
   // Database History States
   const [dbHistory, setDbHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [deterministicSeed, setDeterministicSeed] = useState(true);
 
   const logsEndRef = useRef(null);
 
@@ -128,7 +129,8 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sell_qty: sellQty,
-          exchange_select: exchangeSelect
+          exchange_select: exchangeSelect,
+          seed: deterministicSeed ? 42 : null
         })
       });
       const data = await res.json();
@@ -153,7 +155,8 @@ function App() {
           total_steps: execSteps,
           depth_scale: depthScaleRL,
           otc_pct: otcPctRL,
-          strategy: selectedStrat
+          strategy: selectedStrat,
+          seed: deterministicSeed ? 42 : null
         })
       });
       const data = await res.json();
@@ -341,6 +344,16 @@ function App() {
               onChange={(e) => setUseSecDebt(e.target.checked)}
             />
             <label htmlFor="sec-sync" style={{ cursor: 'pointer' }}>Синхронизация с SEC EDGAR</label>
+          </div>
+
+          <div className="form-group" style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }}>
+            <input 
+              type="checkbox" 
+              id="det-seed"
+              checked={deterministicSeed}
+              onChange={(e) => setDeterministicSeed(e.target.checked)}
+            />
+            <label htmlFor="det-seed" style={{ cursor: 'pointer' }}>Зафиксировать случайность</label>
           </div>
         </aside>
 

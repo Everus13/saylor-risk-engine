@@ -49,6 +49,7 @@ class SettingsUpdate(BaseModel):
 class SimulationRequest(BaseModel):
     sell_qty: float
     exchange_select: str  # "synthetic" or "live"
+    seed: Optional[int] = None
 
 class RLSimulationRequest(BaseModel):
     total_volume: float
@@ -56,6 +57,7 @@ class RLSimulationRequest(BaseModel):
     depth_scale: float
     otc_pct: float
     strategy: str  # "rl" or "twap"
+    seed: Optional[int] = None
 
 # --- WebSocket Log Handler for Streaming RL Logs ---
 
@@ -147,6 +149,11 @@ def update_settings(data: SettingsUpdate):
 def simulate_impact(data: SimulationRequest):
     """Simulate L2 order book walk and predict price impact using ML models."""
     try:
+        if data.seed is not None:
+            import random
+            import numpy as np
+            random.seed(data.seed)
+            np.random.seed(data.seed)
         live_prices = tracker.get_current_prices()
         btc_price = live_prices["BTC"]
         
@@ -216,7 +223,8 @@ def simulate_rl(data: RLSimulationRequest):
             starting_mid_price=btc_price,
             strategy=data.strategy,
             depth_scale=data.depth_scale,
-            otc_pct=data.otc_pct
+            otc_pct=data.otc_pct,
+            seed=data.seed
         )
         
         # Run TWAP simulation for comparison
@@ -226,7 +234,8 @@ def simulate_rl(data: RLSimulationRequest):
             starting_mid_price=metrics_strat["arrival_price"],
             strategy="twap",
             depth_scale=data.depth_scale,
-            otc_pct=data.otc_pct
+            otc_pct=data.otc_pct,
+            seed=data.seed
         )
         
         # Convert DataFrames to dict lists
