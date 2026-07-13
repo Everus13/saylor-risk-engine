@@ -60,31 +60,95 @@ class FinancialTracker:
             pass
 
     def get_current_prices(self) -> Dict[str, float]:
-        """Fetch current prices of BTC and MSTR via yfinance with fallbacks."""
+        """Fetch current prices of BTC and MSTR using robust direct API query fallbacks."""
         prices = {"BTC": 60000.0, "MSTR": 150.0}
+        import requests
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        
+        # --- 1. Fetch Real-time BTC Price ---
+        btc_fetched = False
+        
+        # Fallback A: Coinbase Spot Price API
         try:
-            btc_ticker = yf.Ticker(BTC_TICKER)
-            btc_info = btc_ticker.fast_info
-            if btc_info and "last_price" in btc_info:
-                prices["BTC"] = float(btc_info["last_price"])
-            else:
-                hist = btc_ticker.history(period="1d")
-                if not hist.empty:
-                    prices["BTC"] = float(hist["Close"].iloc[-1])
+            res = requests.get("https://api.coinbase.com/v2/prices/BTC-USD/spot", headers=headers, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                prices["BTC"] = float(data["data"]["amount"])
+                btc_fetched = True
+                logging.info(f"Successfully fetched actual BTC price from Coinbase: ${prices['BTC']:.2f}")
         except Exception as e:
-            logging.warning(f"Failed to fetch BTC price from yfinance: {e}. Using fallback 60000.0")
+            logging.warning(f"Failed to fetch BTC price from Coinbase: {e}")
 
+        # Fallback B: Blockchain.info Ticker API
+        if not btc_fetched:
+            try:
+                res = requests.get("https://blockchain.info/ticker", headers=headers, timeout=5)
+                if res.status_code == 200:
+                    data = res.json()
+                    prices["BTC"] = float(data["USD"]["last"])
+                    btc_fetched = True
+                    logging.info(f"Successfully fetched actual BTC price from Blockchain.info: ${prices['BTC']:.2f}")
+            except Exception as e:
+                logging.warning(f"Failed to fetch BTC price from Blockchain.info: {e}")
+
+        # Fallback C: Binance CCXT
+        if not btc_fetched:
+            try:
+                import ccxt
+                exchange = ccxt.binance()
+                ticker = exchange.fetch_ticker("BTC/USDT")
+                if ticker and "last" in ticker and ticker["last"] is not None:
+                    prices["BTC"] = float(ticker["last"])
+                    btc_fetched = True
+                    logging.info(f"Successfully fetched actual BTC price from Binance CCXT: ${prices['BTC']:.2f}")
+            except Exception as e:
+                logging.warning(f"Failed to fetch live BTC price via CCXT: {e}")
+
+        # Fallback D: yfinance Ticker API
+        if not btc_fetched:
+            try:
+                btc_ticker = yf.Ticker(BTC_TICKER)
+                btc_info = btc_ticker.fast_info
+                if btc_info and "last_price" in btc_info:
+                    prices["BTC"] = float(btc_info["last_price"])
+                else:
+                    hist = btc_ticker.history(period="1d")
+                    if not hist.empty:
+                        prices["BTC"] = float(hist["Close"].iloc[-1])
+            except Exception as e:
+                logging.warning(f"Failed to fetch BTC price from yfinance: {e}. Using default 60000.0")
+
+        # --- 2. Fetch Real-time MSTR Stock Price ---
+        mstr_fetched = False
+        
+        # Fallback A: Direct Yahoo Finance Query Chart API (Bypasses yfinance block)
         try:
-            mstr_ticker = yf.Ticker(MSTR_TICKER)
-            mstr_info = mstr_ticker.fast_info
-            if mstr_info and "last_price" in mstr_info:
-                prices["MSTR"] = float(mstr_info["last_price"])
+            res = requests.get("https://query1.finance.yahoo.com/v8/finance/chart/MSTR?interval=1m&range=1d", headers=headers, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                if "chart" in data and "result" in data["chart"] and data["chart"]["result"]:
+                    mstr_price = data["chart"]["result"][0]["meta"]["regularMarketPrice"]
+                    prices["MSTR"] = float(mstr_price)
+                    mstr_fetched = True
+                    logging.info(f"Successfully fetched actual MSTR price from Yahoo Chart API: ${prices['MSTR']:.2f}")
             else:
-                hist = mstr_ticker.history(period="1d")
-                if not hist.empty:
-                    prices["MSTR"] = float(hist["Close"].iloc[-1])
+                logging.warning(f"Yahoo Chart API returned status code {res.status_code}")
         except Exception as e:
-            logging.warning(f"Failed to fetch MSTR price from yfinance: {e}. Using fallback 150.0")
+            logging.warning(f"Failed to fetch MSTR price directly from Yahoo Chart API: {e}")
+
+        # Fallback B: Standard yfinance Ticker
+        if not mstr_fetched:
+            try:
+                mstr_ticker = yf.Ticker(MSTR_TICKER)
+                mstr_info = mstr_ticker.fast_info
+                if mstr_info and "last_price" in mstr_info:
+                    prices["MSTR"] = float(mstr_info["last_price"])
+                else:
+                    hist = mstr_ticker.history(period="1d")
+                    if not hist.empty:
+                        prices["MSTR"] = float(hist["Close"].iloc[-1])
+            except Exception as e:
+                logging.warning(f"Failed to fetch MSTR price from yfinance: {e}. Using default 150.0")
 
         return prices
 

@@ -286,6 +286,9 @@ function App() {
           <div className="ticker-item">
             BTC-USD: <span className="ticker-value">${livePrices.BTC.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
           </div>
+          <div className="ticker-item">
+            MSTR: <span className="ticker-value" style={{ color: "var(--gold)" }}>${livePrices.MSTR.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+          </div>
           <button className="btn-secondary" style={{ padding: '4px 8px', borderRadius: 4 }} onClick={fetchPrices}>
             {loadingPrices ? <Loader className="animate-spin" size={14} /> : <RefreshCw size={14} />}
           </button>
@@ -317,6 +320,16 @@ function App() {
               value={btcPriceOverride}
               onChange={(e) => setBtcPriceOverride(parseFloat(e.target.value) || 0)}
               step="500"
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Курс акций MSTR ($)</label>
+            <input 
+              type="number" 
+              value={mstrPriceOverride}
+              onChange={(e) => setMstrPriceOverride(parseFloat(e.target.value) || 0)}
+              step="5"
             />
           </div>
 
