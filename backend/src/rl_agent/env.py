@@ -177,8 +177,12 @@ class OptimalExecutionEnv(gym.Env):
             self.remaining_volume -= filled_qty
         
         # Update market price
-        if self.mode == "historical" and hasattr(self, "historical_trajectory") and self.current_step < len(self.historical_trajectory):
-            self.mid_price = self.historical_trajectory[self.current_step]
+        if self.mode == "historical" and hasattr(self, "historical_trajectory"):
+            next_idx = self.current_step + 1
+            if next_idx < len(self.historical_trajectory):
+                self.mid_price = self.historical_trajectory[next_idx]
+            else:
+                self.mid_price = self.historical_trajectory[-1]
         else:
             # Update market price (Random walk / GBM with drift from sales)
             # OTC transactions have lower direct market impact on standard exchanges (e.g. 10x lower impact)
