@@ -2,8 +2,12 @@ import os
 import numpy as np
 import pandas as pd
 import random
+import requests
 from typing import Tuple, Dict, Any, Optional
-from src.config import RL_MODEL_PATH, RL_CONFIG
+from src.config import (
+    RL_MODEL_PATH, RL_CONFIG, RL_MODEL_PATH_STANDARD,
+    RL_MODEL_PATH_STRESS, RL_MODEL_PATH_LIVE, HISTORICAL_DATA_PATH
+)
 from src.rl_agent.env import OptimalExecutionEnv
 
 # Fallback check for Stable Baselines 3
@@ -14,9 +18,48 @@ except ImportError:
     PPO = None
     SB3_AVAILABLE = False
 
+def fetch_historical_btc_prices() -> list:
+    """
+    Fetch daily close prices for BTC-USD for the last 2 years from Yahoo Finance
+    and cache to a local CSV file to optimize performance.
+    """
+    if os.path.exists(HISTORICAL_DATA_PATH):
+        try:
+            df = pd.read_csv(HISTORICAL_DATA_PATH)
+            if "close" in df.columns:
+                prices = df["close"].dropna().tolist()
+                if len(prices) > 50:
+                    return prices
+        except Exception:
+            pass
+
+    try:
+        url = "https://query1.finance.yahoo.com/v8/finance/chart/BTC-USD?range=2y&interval=1d"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        res = requests.get(url, headers=headers, timeout=10)
+        if res.status_code == 200:
+            data = res.json()
+            raw_prices = data["chart"]["result"][0]["indicators"]["quote"][0]["close"]
+            prices = [float(p) for p in raw_prices if p is not None]
+            if len(prices) > 50:
+                os.makedirs(os.path.dirname(HISTORICAL_DATA_PATH), exist_ok=True)
+                df = pd.DataFrame({"close": prices})
+                df.to_csv(HISTORICAL_DATA_PATH, index=False)
+                return prices
+    except Exception as e:
+        print(f"Error fetching historical BTC prices: {e}")
+
+    # Fallback mock price series if API is down
+    return [60000.0 + random.uniform(-1000, 1000) for i in range(500)]
+
 class RLExecutionTrainer:
     def __init__(self, model_path: str = RL_MODEL_PATH) -> None:
         self.model_path: str = model_path
+        self.model_paths = {
+            "standard": RL_MODEL_PATH_STANDARD,
+            "stress": RL_MODEL_PATH_STRESS,
+            "live": RL_MODEL_PATH_LIVE
+        }
 
     def train_agent(
         self,
@@ -26,10 +69,12 @@ class RLExecutionTrainer:
         total_steps: int = 15,
         mid_price: float = 60000.0,
         depth_scale: float = 12.0,
-        otc_pct: float = 0.0
+        otc_pct: float = 0.0,
+        agent_type: str = "standard"
     ) -> bool:
         """
         Train PPO RL Agent on OptimalExecutionEnv and save model.
+        Supports: standard, stress, live.
         """
         if not SB3_AVAILABLE:
             raise ImportError(
@@ -40,12 +85,23 @@ class RLExecutionTrainer:
         timesteps = total_timesteps if total_timesteps is not None else int(RL_CONFIG["total_timesteps"])
         lr = learning_rate if learning_rate is not None else float(RL_CONFIG["learning_rate"])
 
+        # Configure environment mode
+        mode = "synthetic"
+        historical_prices = None
+        if agent_type == "stress":
+            mode = "stress"
+        elif agent_type == "live":
+            mode = "historical"
+            historical_prices = fetch_historical_btc_prices()
+
         env = OptimalExecutionEnv(
             total_volume=total_volume,
             total_steps=total_steps,
             mid_price=mid_price,
             depth_scale=depth_scale,
-            otc_pct=otc_pct
+            otc_pct=otc_pct,
+            mode=mode,
+            historical_prices=historical_prices
         )
 
         model = PPO(
@@ -60,8 +116,9 @@ class RLExecutionTrainer:
 
         model.learn(total_timesteps=timesteps)
 
-        os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
-        model.save(self.model_path)
+        target_model_path = self.model_paths.get(agent_type, self.model_path)
+        os.makedirs(os.path.dirname(target_model_path), exist_ok=True)
+        model.save(target_model_path)
         return True
 
     def run_simulation(
@@ -72,7 +129,8 @@ class RLExecutionTrainer:
         strategy: str = "rl",
         depth_scale: float = 12.0,
         otc_pct: float = 0.0,
-        seed: Optional[int] = None
+        seed: Optional[int] = None,
+        agent_type: str = "standard"
     ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
         """
         Run a single execution episode using the specified strategy.
@@ -87,21 +145,34 @@ class RLExecutionTrainer:
             random.seed(seed)
             np.random.seed(seed)
             torch.manual_seed(seed)
+
+        # Configure environment mode for simulation
+        mode = "synthetic"
+        historical_prices = None
+        if agent_type == "stress":
+            mode = "stress"
+        elif agent_type == "live":
+            mode = "historical"
+            historical_prices = fetch_historical_btc_prices()
+
         env = OptimalExecutionEnv(
             total_volume=total_volume,
             total_steps=total_steps,
             mid_price=starting_mid_price,
             depth_scale=depth_scale,
-            otc_pct=otc_pct
+            otc_pct=otc_pct,
+            mode=mode,
+            historical_prices=historical_prices
         )
         obs, _ = env.reset()
         
         model = None
+        target_model_path = self.model_paths.get(agent_type, self.model_path)
         if strategy == "rl" and SB3_AVAILABLE:
-            model_file = self.model_path + ".zip"
-            if os.path.exists(model_file) or os.path.exists(self.model_path):
+            model_file = target_model_path + ".zip"
+            if os.path.exists(model_file) or os.path.exists(target_model_path):
                 try:
-                    model = PPO.load(self.model_path)
+                    model = PPO.load(target_model_path)
                 except Exception as e:
                     pass
 

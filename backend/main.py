@@ -58,6 +58,7 @@ class RLSimulationRequest(BaseModel):
     otc_pct: float
     strategy: str  # "rl" or "twap"
     seed: Optional[int] = None
+    agent_type: Optional[str] = "standard"
 
 # --- WebSocket Log Handler for Streaming RL Logs ---
 
@@ -224,7 +225,8 @@ def simulate_rl(data: RLSimulationRequest):
             strategy=data.strategy,
             depth_scale=data.depth_scale,
             otc_pct=data.otc_pct,
-            seed=data.seed
+            seed=data.seed,
+            agent_type=data.agent_type
         )
         
         # Run TWAP simulation for comparison
@@ -235,7 +237,8 @@ def simulate_rl(data: RLSimulationRequest):
             strategy="twap",
             depth_scale=data.depth_scale,
             otc_pct=data.otc_pct,
-            seed=data.seed
+            seed=data.seed,
+            agent_type=data.agent_type
         )
         
         # Convert DataFrames to dict lists
@@ -271,6 +274,36 @@ def get_history(limit: int = 15):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/market/status")
+def get_market_status():
+    """Evaluate 24h market performance to detect bearish shock phase."""
+    try:
+        live_prices = tracker.get_current_prices()
+        btc_price = live_prices["BTC"]
+        
+        from src.rl_agent.train import fetch_historical_btc_prices
+        hist_prices = fetch_historical_btc_prices()
+        
+        if hist_prices and len(hist_prices) > 0:
+            yesterday_price = hist_prices[-1]
+            change_pct = ((btc_price - yesterday_price) / yesterday_price) * 100.0
+        else:
+            change_pct = 0.0
+            
+        status = "bearish" if change_pct <= -3.0 else "neutral"
+        
+        return {
+            "status": status,
+            "change_24h_pct": change_pct,
+            "current_price": btc_price
+        }
+    except Exception as e:
+        return {
+            "status": "neutral",
+            "change_24h_pct": 0.0,
+            "error": str(e)
+        }
+
 # --- WebSockets Endpoint for Training Stream ---
 
 @app.websocket("/ws/rl/train")
@@ -293,8 +326,9 @@ async def websocket_rl_train(websocket: WebSocket):
         steps = int(data.get("steps", 15))
         depth_scale = float(data.get("depth_scale", 12.0))
         otc_pct = float(data.get("otc_pct", 0.0))
+        agent_type = data.get("agent_type", "standard")
         
-        await websocket.send_text("🚀 Инициализация Gymnasium-среды для обучения...")
+        await websocket.send_text(f"🚀 Инициализация Gymnasium-среды для обучения ({agent_type})...")
         
         # Run training in block executor to keep event loop free
         loop = asyncio.get_event_loop()
@@ -306,7 +340,8 @@ async def websocket_rl_train(websocket: WebSocket):
                 total_steps=steps,
                 mid_price=tracker.get_current_prices()["BTC"],
                 depth_scale=depth_scale,
-                otc_pct=otc_pct
+                otc_pct=otc_pct,
+                agent_type=agent_type
             )
         )
         
@@ -326,7 +361,7 @@ async def websocket_rl_train(websocket: WebSocket):
 
 # Run training trigger endpoint (optional HTTP fallback)
 @app.post("/api/rl/train")
-async def trigger_rl_train(timesteps: int = 10000, volume: float = 300.0, steps: int = 15, depth_scale: float = 12.0, otc_pct: float = 0.0):
+async def trigger_rl_train(timesteps: int = 10000, volume: float = 300.0, steps: int = 15, depth_scale: float = 12.0, otc_pct: float = 0.0, agent_type: str = "standard"):
     if not SB3_AVAILABLE:
         raise HTTPException(status_code=400, detail="stable-baselines3 is not installed.")
     try:
@@ -340,9 +375,10 @@ async def trigger_rl_train(timesteps: int = 10000, volume: float = 300.0, steps:
                 total_steps=steps,
                 mid_price=btc_price,
                 depth_scale=depth_scale,
-                otc_pct=otc_pct
+                otc_pct=otc_pct,
+                agent_type=agent_type
             )
         )
-        return {"status": "success", "detail": "Training started in background thread."}
+        return {"status": "success", "detail": f"Training of {agent_type} started in background thread."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

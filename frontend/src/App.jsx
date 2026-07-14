@@ -51,13 +51,26 @@ function App() {
   const [dbHistory, setDbHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [deterministicSeed, setDeterministicSeed] = useState(true);
+  const [agentType, setAgentType] = useState("standard");
+  const [marketStatus, setMarketStatus] = useState({ status: "neutral", change_24h_pct: 0.0 });
 
   const logsEndRef = useRef(null);
+
+  const fetchMarketStatus = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/market/status`);
+      const data = await res.json();
+      setMarketStatus(data);
+    } catch (e) {
+      console.error("Error fetching market status:", e);
+    }
+  };
 
   // Fetch prices on mount and settings
   useEffect(() => {
     fetchPrices();
     fetchHistory();
+    fetchMarketStatus();
   }, []);
 
   // Fetch financials when reserve, forecast, or sync option changes
@@ -80,6 +93,7 @@ function App() {
       setLivePrices(data);
       if (btcPriceOverride === 0.0) setBtcPriceOverride(data.BTC);
       if (mstrPriceOverride === 0.0) setMstrPriceOverride(data.MSTR);
+      fetchMarketStatus();
     } catch (e) {
       console.error("Error fetching prices:", e);
     } finally {
@@ -156,7 +170,8 @@ function App() {
           depth_scale: depthScaleRL,
           otc_pct: otcPctRL,
           strategy: selectedStrat,
-          seed: deterministicSeed ? 42 : null
+          seed: deterministicSeed ? 42 : null,
+          agent_type: agentType
         })
       });
       const data = await res.json();
@@ -182,7 +197,8 @@ function App() {
         volume: execVolume,
         steps: execSteps,
         depth_scale: depthScaleRL,
-        otc_pct: otcPctRL
+        otc_pct: otcPctRL,
+        agent_type: agentType
       }));
     };
 
@@ -286,6 +302,37 @@ function App() {
         </nav>
 
         <div className="ticker-section">
+          {marketStatus.status === "bearish" ? (
+            <div className="ticker-item bearish-alert" style={{ 
+              color: "var(--red)", 
+              border: "1px solid rgba(255, 23, 68, 0.3)", 
+              padding: "2px 8px", 
+              borderRadius: 4, 
+              background: "rgba(255, 23, 68, 0.1)",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12
+            }}>
+              <AlertTriangle size={12} />
+              <span>ШОК-ФАЗА: -{Math.abs(marketStatus.change_24h_pct).toFixed(2)}%</span>
+            </div>
+          ) : (
+            <div className="ticker-item" style={{ 
+              color: "var(--green)", 
+              border: "1px solid rgba(0, 230, 118, 0.3)", 
+              padding: "2px 8px", 
+              borderRadius: 4, 
+              background: "rgba(0, 230, 118, 0.1)",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12
+            }}>
+              <TrendingUp size={12} />
+              <span>СТАБИЛЬНЫЙ ({marketStatus.change_24h_pct >= 0 ? "+" : ""}{marketStatus.change_24h_pct.toFixed(2)}%)</span>
+            </div>
+          )}
           <div className="ticker-item">
             BTC-USD: <span className="ticker-value">${livePrices.BTC.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
           </div>
@@ -671,6 +718,36 @@ function App() {
                       </select>
                     </div>
 
+                    {selectedStrat === "rl" && (
+                      <div className="form-group">
+                        <label>Выбор Агента</label>
+                        <select value={agentType} onChange={(e) => setAgentType(e.target.value)}>
+                          <option value="standard">Стандартный PPO (PPO Standard)</option>
+                          <option value="stress">Стресс-Агент (PPO Stress / Шок-стакан)</option>
+                          <option value="live">Реальный Агент (PPO Live / 2Y История)</option>
+                        </select>
+                      </div>
+                    )}
+
+                    {marketStatus.status === "bearish" && selectedStrat === "rl" && (
+                      <div style={{
+                        padding: "10px",
+                        border: "1px dashed var(--red)",
+                        borderRadius: "4px",
+                        backgroundColor: "rgba(255, 23, 68, 0.08)",
+                        fontSize: "12px",
+                        color: "var(--text-primary)",
+                        lineHeight: "1.4",
+                        marginTop: 5,
+                        marginBottom: 5
+                      }}>
+                        <span style={{ color: "var(--red)", fontWeight: "bold", display: "block", marginBottom: "4px" }}>
+                          ⚠️ Рекомендация по шок-фазе:
+                        </span>
+                        Рынок BTC находится в медвежьей фазе ({marketStatus.change_24h_pct.toFixed(2)}%). Рекомендуется выбрать <strong>Стресс-Агента</strong>.
+                      </div>
+                    )}
+
                     <button className="btn" onClick={runRLSimulation} disabled={loadingRLSim || isTraining}>
                       {loadingRLSim ? <Loader className="animate-spin" size={14} /> : <Play size={14} />}
                       Запустить симуляцию ордера
@@ -681,6 +758,15 @@ function App() {
                   <div className="card" style={{ gap: 16 }}>
                     <span className="section-title" style={{ border: 'none', paddingLeft: 0 }}>Обучение PPO агента</span>
                     
+                    <div className="form-group">
+                      <label>Тип агента для обучения</label>
+                      <select value={agentType} onChange={(e) => setAgentType(e.target.value)}>
+                        <option value="standard">Стандартный PPO (PPO Standard)</option>
+                        <option value="stress">Стресс-Агент (PPO Stress / Шок-стакан)</option>
+                        <option value="live">Реальный Агент (PPO Live / 2Y История)</option>
+                      </select>
+                    </div>
+
                     <div className="form-group">
                       <label>Шагов обучения (Timesteps)</label>
                       <input 

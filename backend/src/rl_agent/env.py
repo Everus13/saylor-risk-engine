@@ -24,7 +24,9 @@ class OptimalExecutionEnv(gym.Env):
         total_steps: int = 15,        # time steps to execute the order
         mid_price: float = 60000.0,   # starting mid price
         depth_scale: float = 12.0,    # L2 book depth scale (liquidity)
-        otc_pct: float = 0.0          # Percentage of sale volume routed via OTC
+        otc_pct: float = 0.0,         # Percentage of sale volume routed via OTC
+        mode: str = "synthetic",      # "synthetic", "stress", or "historical"
+        historical_prices: Optional[List[float]] = None
     ) -> None:
         super().__init__()
         self.total_volume: float = total_volume
@@ -32,6 +34,8 @@ class OptimalExecutionEnv(gym.Env):
         self.starting_mid_price: float = mid_price
         self.depth_scale: float = depth_scale
         self.otc_pct: float = otc_pct
+        self.mode: str = mode
+        self.historical_prices: Optional[List[float]] = historical_prices
 
         # Action Space: continuous value in [0.0, 1.0] representing
         # the fraction of REMAINING volume to sell in this step.
@@ -60,17 +64,37 @@ class OptimalExecutionEnv(gym.Env):
     def reset(self, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None) -> Tuple[np.ndarray, Dict[str, Any]]:
         super().reset(seed=seed)
         
-        # Randomize start parameters slightly to improve generalization
-        self.mid_price = self.starting_mid_price * random.uniform(0.95, 1.05)
+        if self.mode == "historical" and self.historical_prices:
+            # Sample a random starting index
+            max_start = len(self.historical_prices) - self.total_steps
+            if max_start > 0:
+                start_idx = random.randint(0, max_start)
+                self.historical_trajectory = self.historical_prices[start_idx : start_idx + self.total_steps]
+            else:
+                self.historical_trajectory = [self.starting_mid_price] * self.total_steps
+            
+            self.mid_price = self.historical_trajectory[0]
+        elif self.mode == "stress":
+            self.mid_price = self.starting_mid_price * random.uniform(0.90, 0.98)
+        else:
+            # Randomize start parameters slightly to improve generalization
+            self.mid_price = self.starting_mid_price * random.uniform(0.95, 1.05)
+            
         self.arrival_price = self.mid_price
         self.remaining_volume = self.total_volume
         self.current_step = 0
         
         # Simulate initial order book
+        current_depth_scale = self.depth_scale
+        current_spread = random.uniform(1.0, 5.0)
+        if self.mode == "stress":
+            current_depth_scale = self.depth_scale / 10.0
+            current_spread = random.uniform(20.0, 100.0)
+            
         self.order_book = OrderBookSimulator.generate_synthetic_order_book(
             mid_price=self.mid_price,
-            spread=random.uniform(1.0, 5.0),
-            depth_scale=self.depth_scale,
+            spread=current_spread,
+            depth_scale=current_depth_scale,
             noise_level=0.2
         )
         
@@ -152,18 +176,34 @@ class OptimalExecutionEnv(gym.Env):
             # Reduce inventory
             self.remaining_volume -= filled_qty
         
-        # Update market price (Random walk / GBM with drift from sales)
-        # OTC transactions have lower direct market impact on standard exchanges (e.g. 10x lower impact)
-        market_qty_effective = (sell_qty - sell_qty * (self.otc_pct / 100.0)) + 0.1 * (sell_qty * (self.otc_pct / 100.0))
-        market_impact_impact = market_qty_effective * 0.0001
-        price_drift = -market_impact_impact + random.normalvariate(0, self.mid_price * 0.001)
-        self.mid_price = max(1000.0, self.mid_price + price_drift)
+        # Update market price
+        if self.mode == "historical" and hasattr(self, "historical_trajectory") and self.current_step < len(self.historical_trajectory):
+            self.mid_price = self.historical_trajectory[self.current_step]
+        else:
+            # Update market price (Random walk / GBM with drift from sales)
+            # OTC transactions have lower direct market impact on standard exchanges (e.g. 10x lower impact)
+            market_qty_effective = (sell_qty - sell_qty * (self.otc_pct / 100.0)) + 0.1 * (sell_qty * (self.otc_pct / 100.0))
+            
+            if self.mode == "stress":
+                market_impact_impact = market_qty_effective * 0.0005 # 5x higher impact
+                price_drift = -market_impact_impact + random.normalvariate(-self.mid_price * 0.005, self.mid_price * 0.002) # panic sell drift
+            else:
+                market_impact_impact = market_qty_effective * 0.0001
+                price_drift = -market_impact_impact + random.normalvariate(0, self.mid_price * 0.001)
+                
+            self.mid_price = max(1000.0, self.mid_price + price_drift)
         
         # Generate new order book at the new price level
+        current_depth_scale = self.depth_scale
+        current_spread = random.uniform(1.0, 5.0)
+        if self.mode == "stress":
+            current_depth_scale = self.depth_scale / 10.0
+            current_spread = random.uniform(20.0, 100.0)
+            
         self.order_book = OrderBookSimulator.generate_synthetic_order_book(
             mid_price=self.mid_price,
-            spread=random.uniform(1.0, 5.0),
-            depth_scale=self.depth_scale,
+            spread=current_spread,
+            depth_scale=current_depth_scale,
             noise_level=0.2
         )
         
