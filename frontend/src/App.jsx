@@ -54,6 +54,13 @@ function App() {
   const [agentType, setAgentType] = useState("standard");
   const [marketStatus, setMarketStatus] = useState({ status: "neutral", change_24h_pct: 0.0 });
 
+  // mNAV States
+  const [btcHolding, setBtcHolding] = useState(843775);
+  const [sharesOutstanding, setSharesOutstanding] = useState(333913000);
+  const [mnavData, setMnavData] = useState(null);
+  const [loadingMnav, setLoadingMnav] = useState(false);
+  const [trainingMnav, setTrainingMnav] = useState(false);
+
   const logsEndRef = useRef(null);
 
   const fetchMarketStatus = async () => {
@@ -66,11 +73,36 @@ function App() {
     }
   };
 
+  const fetchMnavStatus = async () => {
+    setLoadingMnav(true);
+    try {
+      await fetch(`${API_BASE}/settings/mnav`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          btc_holdings: btcHolding,
+          shares_outstanding: sharesOutstanding
+        })
+      });
+
+      const res = await fetch(`${API_BASE}/mnav/status`);
+      const data = await res.json();
+      setMnavData(data);
+      setBtcHolding(data.btc_holdings);
+      setSharesOutstanding(data.shares_outstanding);
+    } catch (e) {
+      console.error("Error fetching mNAV status:", e);
+    } finally {
+      setLoadingMnav(false);
+    }
+  };
+
   // Fetch prices on mount and settings
   useEffect(() => {
     fetchPrices();
     fetchHistory();
     fetchMarketStatus();
+    fetchMnavStatus();
   }, []);
 
   // Fetch financials when reserve, forecast, or sync option changes
@@ -293,6 +325,13 @@ function App() {
             Оптимальное исполнение (RL)
           </button>
           <button 
+            className={`nav-tab ${activeTab === "mnav" ? "active" : ""}`}
+            onClick={() => setActiveTab("mnav")}
+          >
+            <TrendingUp size={14} style={{ display: 'inline', marginRight: 6, verticalAlign: 'middle' }} />
+            Анализ mNAV (ML)
+          </button>
+          <button 
             className={`nav-tab ${activeTab === "history" ? "active" : ""}`}
             onClick={() => setActiveTab("history")}
           >
@@ -382,6 +421,30 @@ function App() {
               step="5"
             />
           </div>
+
+          <div className="form-group">
+            <label>Кол-во BTC у MSTR</label>
+            <input 
+              type="number" 
+              value={btcHolding}
+              onChange={(e) => setBtcHolding(parseInt(e.target.value) || 0)}
+              step="1000"
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Кол-во акций MSTR</label>
+            <input 
+              type="number" 
+              value={sharesOutstanding}
+              onChange={(e) => setSharesOutstanding(parseInt(e.target.value) || 0)}
+              step="100000"
+            />
+          </div>
+
+          <button className="btn btn-secondary" style={{ marginTop: 5, marginBottom: 15, width: '100%' }} onClick={fetchMnavStatus} disabled={loadingMnav}>
+            {loadingMnav ? <Loader className="animate-spin" size={12} /> : null} Применить mNAV
+          </button>
 
           <div className="form-group" style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 }}>
             <input 
@@ -602,24 +665,20 @@ function App() {
                           <thead>
                             <tr>
                               <th>Сценарий импакта</th>
-                              <th>Модель LightGBM</th>
                               <th>Нейросеть PyTorch Deep MLP</th>
                             </tr>
                           </thead>
                           <tbody>
                             <tr>
                               <td>Минимальный (Квантиль 10%)</td>
-                              <td className="mono" style={{ color: "var(--green)" }}>-{simImpactData.predictions.lgb[0.1].toFixed(4)}%</td>
                               <td className="mono" style={{ color: "var(--green)" }}>-{simImpactData.predictions.pytorch[0.1].toFixed(4)}%</td>
                             </tr>
                             <tr style={{ backgroundColor: 'rgba(212, 175, 55, 0.04)' }}>
                               <td style={{ fontWeight: 'bold', color: "var(--gold)" }}>Медианный (Квантиль 50%)</td>
-                              <td className="mono" style={{ fontWeight: 'bold', color: "var(--gold)" }}>-{simImpactData.predictions.lgb[0.5].toFixed(4)}%</td>
                               <td className="mono" style={{ fontWeight: 'bold', color: "var(--gold)" }}>-{simImpactData.predictions.pytorch[0.5].toFixed(4)}%</td>
                             </tr>
                             <tr>
                               <td>Худший случай (Квантиль 90%)</td>
-                              <td className="mono" style={{ color: "var(--red)" }}>-{simImpactData.predictions.lgb[0.9].toFixed(4)}%</td>
                               <td className="mono" style={{ color: "var(--red)" }}>-{simImpactData.predictions.pytorch[0.9].toFixed(4)}%</td>
                             </tr>
                           </tbody>
@@ -888,7 +947,155 @@ function App() {
             </>
           )}
 
-          {/* TAB 4: DATABASE HISTORY LOGS */}
+          {/* TAB 4: mNAV PREMIUM/DISCOUNT & ML MODEL */}
+          {activeTab === "mnav" && (
+            <>
+              <div className="section-title">Анализ премии к стоимости чистых активов (mNAV Model)</div>
+              
+              {mnavData ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                  
+                  {/* Grid of Key metrics */}
+                  <div className="metrics-grid">
+                    <div className="card">
+                      <span className="card-title">Рыночная цена MSTR</span>
+                      <span className="card-value">${mnavData.mstr_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    
+                    <div className="card">
+                      <span className="card-title">mNAV на акцию (Справедливая)</span>
+                      <span className="card-value">${mnavData.mnav_per_share.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                    </div>
+
+                    <div className="card">
+                      <span className="card-title">Премия / Дисконт (%)</span>
+                      <span className="card-value" style={{
+                        color: mnavData.premium_pct >= 15 ? "var(--green)" : mnavData.premium_pct < 5 ? "var(--red)" : "var(--gold)",
+                        fontWeight: 'bold'
+                      }}>
+                        {mnavData.premium_pct.toFixed(2)}%
+                      </span>
+                      <span style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 4 }}>
+                        {mnavData.premium_pct >= 15 ? "🟢 Зона ATM-эмиссии (Продаж нет)" : mnavData.premium_pct < 5 ? "🔴 Шок-Зона (Угроза ликвидации BTC!)" : "🟡 Сжатие премии"}
+                      </span>
+                    </div>
+
+                    <div className="card" style={{ border: mnavData.collapse_probability > 0.5 ? "1px solid var(--red)" : "1px solid var(--border-color)" }}>
+                      <span className="card-title">Угроза обвала премии (30 дн)</span>
+                      <span className="card-value" style={{ 
+                        color: mnavData.collapse_probability > 0.5 ? "var(--red)" : mnavData.collapse_probability > 0.2 ? "var(--gold)" : "var(--green)",
+                        fontWeight: 'bold'
+                      }}>
+                        {(mnavData.collapse_probability * 100).toFixed(1)}%
+                      </span>
+                      <span style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 4 }}>
+                        ML-модель: {mnavData.model_name}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="split-layout" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                    
+                    {/* Model Training & Metrics Compare Card */}
+                    <div className="card" style={{ gap: 16 }}>
+                      <span className="section-title" style={{ border: 'none', paddingLeft: 0 }}>Обучение и валидация ML-модели</span>
+                      
+                      <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: "1.5" }}>
+                        Бэкенд проводит соревнование (Backtesting) между классификатором <strong>Random Forest</strong> и <strong>LightGBM</strong> на 80/20 историческом разделении. В продакшн выбирается модель с наибольшим F1-Score.
+                      </p>
+
+                      {mnavData.model_metrics && mnavData.model_metrics.chosen && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, backgroundColor: 'rgba(255,255,255,0.02)', padding: 12, borderRadius: 4, border: '1px solid var(--border-color)' }}>
+                          <span style={{ fontSize: 12, fontWeight: 'bold' }}>Результаты аудита моделей:</span>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                            <span>Выбранный чемпион:</span>
+                            <strong style={{ color: 'var(--gold)' }}>{mnavData.model_metrics.chosen}</strong>
+                          </div>
+                          
+                          <div style={{ borderTop: '1px solid #1e293b', paddingTop: 6, display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-secondary)' }}>
+                            <span>RF Accuracy:</span>
+                            <span>{(mnavData.model_metrics.rf_accuracy * 100).toFixed(1)}% | F1: {mnavData.model_metrics.rf_f1.toFixed(3)}</span>
+                          </div>
+
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-secondary)' }}>
+                            <span>LGBM Accuracy:</span>
+                            <span>{(mnavData.model_metrics.lgb_accuracy * 100).toFixed(1)}% | F1: {mnavData.model_metrics.lgb_f1.toFixed(3)}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      <button className="btn" onClick={async () => {
+                        setTrainingMnav(true);
+                        try {
+                          const res = await fetch(`${API_BASE}/mnav/train`, { method: 'POST' });
+                          const report = await res.json();
+                          alert(`Обучение завершено!\nМодель-победитель: ${report.chosen}\nF1 RF: ${report.rf.f1_score.toFixed(3)} vs F1 LGBM: ${report.lgb.f1_score.toFixed(3)}`);
+                          fetchMnavStatus();
+                        } catch (e) {
+                          console.error(e);
+                        } finally {
+                          setTrainingMnav(false);
+                        }
+                      }} disabled={trainingMnav}>
+                        {trainingMnav ? <Loader className="animate-spin" size={14} /> : <Play size={14} />}
+                        Запустить аудит и переобучить модель
+                      </button>
+                    </div>
+
+                    {/* Macro Factors Pressures */}
+                    <div className="card" style={{ gap: 16 }}>
+                      <span className="section-title" style={{ border: 'none', paddingLeft: 0 }}>Входные макро-факторы давления</span>
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #1e293b', paddingBottom: 6 }}>
+                          <span>Индекс волатильности (VIX)</span>
+                          <strong className="mono">{mnavData.vix.toFixed(2)}</strong>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #1e293b', paddingBottom: 6 }}>
+                          <span>10-Yr Treasury Yield (TNX)</span>
+                          <strong className="mono">{mnavData.tnx.toFixed(2)}%</strong>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #1e293b', paddingBottom: 6 }}>
+                          <span>Индекс Доллара США (DXY)</span>
+                          <strong className="mono">{mnavData.dxy.toFixed(2)}</strong>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #1e293b', paddingBottom: 6 }}>
+                          <span>BTC на одну акцию MSTR</span>
+                          <strong className="mono" style={{ color: 'var(--gold)' }}>{mnavData.implied_btc_per_share.toFixed(7)} BTC</strong>
+                        </div>
+                      </div>
+
+                      {mnavData.collapse_probability > 0.4 && (
+                        <div style={{
+                          padding: "10px",
+                          border: "1px dashed var(--red)",
+                          borderRadius: "4px",
+                          backgroundColor: "rgba(255, 23, 68, 0.08)",
+                          fontSize: "12px",
+                          color: "var(--text-primary)",
+                          lineHeight: "1.4",
+                          marginTop: 5
+                        }}>
+                          <span style={{ color: "var(--red)", fontWeight: "bold" }}>⚠️ Предупреждение об обвале премии:</span><br/>
+                          Текущее макро-давление указывает на высокий риск схлопывания премии. Ликвидность ATM может закрыться, что заставит MSTR продавать биткоины для обслуживания обязательств.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="card" style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
+                  <Loader className="animate-spin" size={24} />
+                  <span style={{ marginLeft: 10 }}>Загрузка mNAV данных...</span>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* TAB 5: DATABASE HISTORY LOGS */}
           {activeTab === "history" && (
             <>
               <div className="section-title">Архивные записи симуляций исполнения (SQLite DB)</div>

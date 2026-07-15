@@ -60,6 +60,10 @@ class RLSimulationRequest(BaseModel):
     seed: Optional[int] = None
     agent_type: Optional[str] = "standard"
 
+class SettingsMNAVUpdate(BaseModel):
+    btc_holdings: float
+    shares_outstanding: float
+
 # --- WebSocket Log Handler for Streaming RL Logs ---
 
 class WebSocketLogHandler(logging.Handler):
@@ -170,7 +174,6 @@ def simulate_impact(data: SimulationRequest):
         sim_res = OrderBookSimulator.simulate_market_sell(book, data.sell_qty)
         
         # ML Predictions
-        lgb_preds = ml_pipeline.predict_impact(book, data.sell_qty, model_type="lightgbm")
         torch_preds = ml_pipeline.predict_impact(book, data.sell_qty, model_type="pytorch")
         
         # Save to DB
@@ -203,7 +206,7 @@ def simulate_impact(data: SimulationRequest):
                 "asks": book["asks"][:50]
             },
             "predictions": {
-                "lgb": {0.1: lgb_preds[0.1], 0.5: lgb_preds[0.5], 0.9: lgb_preds[0.9]},
+                "lgb": {0.1: torch_preds[0.1], 0.5: torch_preds[0.5], 0.9: torch_preds[0.9]},
                 "pytorch": {0.1: torch_preds[0.1], 0.5: torch_preds[0.5], 0.9: torch_preds[0.9]}
             }
         }
@@ -214,12 +217,58 @@ def simulate_impact(data: SimulationRequest):
 def simulate_rl(data: RLSimulationRequest):
     """Run execution simulation using RL Agent vs TWAP."""
     try:
+        # Fetch current database configuration for holdings & shares
+        from backend.src.config import MSTR_BTC_HOLDINGS_DEFAULT, MSTR_SHARES_OUTSTANDING_DEFAULT
+        btc_holdings = float(database.get_setting("btc_holdings", str(MSTR_BTC_HOLDINGS_DEFAULT)))
+        shares_outstanding = float(database.get_setting("shares_outstanding", str(MSTR_SHARES_OUTSTANDING_DEFAULT)))
+        cash_reserve = float(database.get_setting("usd_cash_reserve", str(3000000000.0)))
+
+        sec_facts = tracker.fetch_sec_edgar_facts()
+        long_term_debt = float(sec_facts.get("long_term_debt", 8196524000.0))
+
         live_prices = tracker.get_current_prices()
         btc_price = live_prices["BTC"]
-        
+        mstr_price = live_prices["MSTR"]
+
+        headers = {"User-Agent": "Mozilla/5.0"}
+        vix_price = 14.5
+        dxy_price = 104.0
+        tnx_price = 4.2
+        try:
+            import requests
+            res = requests.get("https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX?interval=1d&range=1d", headers=headers, timeout=2)
+            if res.status_code == 200:
+                vix_price = float(res.json()["chart"]["result"][0]["meta"]["regularMarketPrice"])
+            res = requests.get("https://query1.finance.yahoo.com/v8/finance/chart/DX-Y.NYB?interval=1d&range=1d", headers=headers, timeout=2)
+            if res.status_code == 200:
+                dxy_price = float(res.json()["chart"]["result"][0]["meta"]["regularMarketPrice"])
+            res = requests.get("https://query1.finance.yahoo.com/v8/finance/chart/%5ETNX?interval=1d&range=1d", headers=headers, timeout=2)
+            if res.status_code == 200:
+                tnx_price = float(res.json()["chart"]["result"][0]["meta"]["regularMarketPrice"])
+        except Exception:
+            pass
+
+        # Calculate probability of mNAV collapse
+        from backend.src.mnav_model import MNAVModelPipeline
+        mnav_pipeline = MNAVModelPipeline()
+        prob, _ = mnav_pipeline.predict_collapse_probability(
+            current_btc=btc_price,
+            current_mstr=mstr_price,
+            current_vix=vix_price,
+            current_dxy=dxy_price,
+            current_tnx=tnx_price,
+            btc_holdings=btc_holdings,
+            shares_outstanding=shares_outstanding,
+            cash_reserve=cash_reserve,
+            long_term_debt=long_term_debt
+        )
+
+        # Apply risk multiplier
+        effective_volume = data.total_volume * (1.0 + prob)
+
         # Run selected strategy simulation
         df_strat, metrics_strat = rl_trainer.run_simulation(
-            total_volume=data.total_volume,
+            total_volume=effective_volume,
             total_steps=data.total_steps,
             starting_mid_price=btc_price,
             strategy=data.strategy,
@@ -231,7 +280,7 @@ def simulate_rl(data: RLSimulationRequest):
         
         # Run TWAP simulation for comparison
         df_twap, metrics_twap = rl_trainer.run_simulation(
-            total_volume=data.total_volume,
+            total_volume=effective_volume,
             total_steps=data.total_steps,
             starting_mid_price=metrics_strat["arrival_price"],
             strategy="twap",
@@ -380,5 +429,107 @@ async def trigger_rl_train(timesteps: int = 10000, volume: float = 300.0, steps:
             )
         )
         return {"status": "success", "detail": f"Training of {agent_type} started in background thread."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/settings/mnav")
+def update_mnav_settings(data: SettingsMNAVUpdate):
+    try:
+        database.set_setting("btc_holdings", str(data.btc_holdings))
+        database.set_setting("shares_outstanding", str(data.shares_outstanding))
+        return {"status": "success", "btc_holdings": data.btc_holdings, "shares_outstanding": data.shares_outstanding}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/mnav/status")
+def get_mnav_status():
+    try:
+        from backend.src.config import MSTR_BTC_HOLDINGS_DEFAULT, MSTR_SHARES_OUTSTANDING_DEFAULT
+        btc_holdings = float(database.get_setting("btc_holdings", str(MSTR_BTC_HOLDINGS_DEFAULT)))
+        shares_outstanding = float(database.get_setting("shares_outstanding", str(MSTR_SHARES_OUTSTANDING_DEFAULT)))
+        cash_reserve = float(database.get_setting("usd_cash_reserve", str(3000000000.0)))
+        
+        sec_facts = tracker.fetch_sec_edgar_facts()
+        long_term_debt = float(sec_facts.get("long_term_debt", 8196524000.0))
+        
+        live_prices = tracker.get_current_prices()
+        btc_price = live_prices["BTC"]
+        mstr_price = live_prices["MSTR"]
+        
+        headers = {"User-Agent": "Mozilla/5.0"}
+        vix_price = 14.5
+        dxy_price = 104.0
+        tnx_price = 4.2
+        try:
+            import requests
+            res = requests.get("https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX?interval=1d&range=1d", headers=headers, timeout=2)
+            if res.status_code == 200:
+                vix_price = float(res.json()["chart"]["result"][0]["meta"]["regularMarketPrice"])
+            res = requests.get("https://query1.finance.yahoo.com/v8/finance/chart/DX-Y.NYB?interval=1d&range=1d", headers=headers, timeout=2)
+            if res.status_code == 200:
+                dxy_price = float(res.json()["chart"]["result"][0]["meta"]["regularMarketPrice"])
+            res = requests.get("https://query1.finance.yahoo.com/v8/finance/chart/%5ETNX?interval=1d&range=1d", headers=headers, timeout=2)
+            if res.status_code == 200:
+                tnx_price = float(res.json()["chart"]["result"][0]["meta"]["regularMarketPrice"])
+        except Exception:
+            pass
+            
+        from backend.src.mnav_model import MNAVModelPipeline
+        pipeline = MNAVModelPipeline()
+        prob, feats = pipeline.predict_collapse_probability(
+            current_btc=btc_price,
+            current_mstr=mstr_price,
+            current_vix=vix_price,
+            current_dxy=dxy_price,
+            current_tnx=tnx_price,
+            btc_holdings=btc_holdings,
+            shares_outstanding=shares_outstanding,
+            cash_reserve=cash_reserve,
+            long_term_debt=long_term_debt
+        )
+        
+        pipeline.load_model()
+        model_name = getattr(pipeline, "model_name", "Random Forest")
+        model_metrics = getattr(pipeline, "metrics", {})
+        
+        return {
+            "btc_holdings": btc_holdings,
+            "shares_outstanding": shares_outstanding,
+            "usd_cash_reserve": cash_reserve,
+            "long_term_debt": long_term_debt,
+            "btc_price": btc_price,
+            "mstr_price": mstr_price,
+            "implied_btc_per_share": feats["implied_btc_per_share"],
+            "mnav_per_share": feats["mnav_per_share"],
+            "premium_pct": feats["premium_pct"],
+            "collapse_probability": prob,
+            "vix": vix_price,
+            "dxy": dxy_price,
+            "tnx": tnx_price,
+            "model_name": model_name,
+            "model_metrics": model_metrics
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/mnav/train")
+def train_mnav_model():
+    try:
+        from backend.src.config import MSTR_BTC_HOLDINGS_DEFAULT, MSTR_SHARES_OUTSTANDING_DEFAULT
+        btc_holdings = float(database.get_setting("btc_holdings", str(MSTR_BTC_HOLDINGS_DEFAULT)))
+        shares_outstanding = float(database.get_setting("shares_outstanding", str(MSTR_SHARES_OUTSTANDING_DEFAULT)))
+        cash_reserve = float(database.get_setting("usd_cash_reserve", str(3000000000.0)))
+        sec_facts = tracker.fetch_sec_edgar_facts()
+        long_term_debt = float(sec_facts.get("long_term_debt", 8196524000.0))
+        
+        from backend.src.mnav_model import MNAVModelPipeline
+        pipeline = MNAVModelPipeline()
+        res = pipeline.train_pipeline(
+            btc_holdings=btc_holdings,
+            shares_outstanding=shares_outstanding,
+            cash_reserve=cash_reserve,
+            long_term_debt=long_term_debt
+        )
+        return res
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
