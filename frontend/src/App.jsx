@@ -1086,10 +1086,17 @@ function App() {
                     </div>
                   </div>
                 </div>
-              ) : (
+              ) : loadingMnav ? (
                 <div className="card" style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
                   <Loader className="animate-spin" size={24} />
                   <span style={{ marginLeft: 10 }}>Загрузка mNAV данных...</span>
+                </div>
+              ) : (
+                <div className="card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 40, gap: 15 }}>
+                  <span style={{ color: "var(--red)" }}>⚠️ Не удалось загрузить mNAV показатели. Убедитесь, что бэкенд активен.</span>
+                  <button className="btn btn-secondary" style={{ width: 180 }} onClick={fetchMnavStatus}>
+                    Повторить попытку
+                  </button>
                 </div>
               )}
             </>
