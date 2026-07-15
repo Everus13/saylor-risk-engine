@@ -25,6 +25,15 @@ def fetch_historical_btc_prices() -> list:
     """
     if os.path.exists(HISTORICAL_DATA_PATH):
         try:
+            import time
+            file_age_seconds = time.time() - os.path.getmtime(HISTORICAL_DATA_PATH)
+            if file_age_seconds > 86400:  # 24 hours TTL
+                os.remove(HISTORICAL_DATA_PATH)
+        except Exception:
+            pass
+
+    if os.path.exists(HISTORICAL_DATA_PATH):
+        try:
             df = pd.read_csv(HISTORICAL_DATA_PATH)
             if "close" in df.columns:
                 prices = df["close"].dropna().tolist()
@@ -167,6 +176,7 @@ class RLExecutionTrainer:
         obs, _ = env.reset()
         
         model = None
+        warning_msg = None
         target_model_path = self.model_paths.get(agent_type, self.model_path)
         if strategy == "rl" and SB3_AVAILABLE:
             model_file = target_model_path + ".zip"
@@ -174,7 +184,9 @@ class RLExecutionTrainer:
                 try:
                     model = PPO.load(target_model_path)
                 except Exception as e:
-                    pass
+                    warning_msg = f"Ошибка загрузки весов PPO: {str(e)}. Использован случайный агент."
+            else:
+                warning_msg = f"Файл модели {agent_type} не найден. Симуляция запущена на необученном агенте! Пожалуйста, сначала обучите его."
 
         terminated = False
         truncated = False
@@ -217,7 +229,8 @@ class RLExecutionTrainer:
             "total_sold_btc": total_sold,
             "total_slippage_pct": slippage_pct,
             "initial_volume_btc": total_volume,
-            "horizon_steps": total_steps
+            "horizon_steps": total_steps,
+            "warning": warning_msg
         }
 
         return df, metrics

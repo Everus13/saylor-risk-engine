@@ -804,6 +804,25 @@ function App() {
                   
                   {rlSimulation && (
                     <>
+                      {rlSimulation.metrics.warning && (
+                        <div style={{
+                          padding: "12px 16px",
+                          border: "1px dashed var(--red)",
+                          borderRadius: "4px",
+                          backgroundColor: "rgba(255, 23, 68, 0.08)",
+                          fontSize: "13px",
+                          color: "var(--text-primary)",
+                          lineHeight: "1.4",
+                          marginBottom: "12px",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "10px"
+                        }}>
+                          <AlertTriangle size={16} style={{ color: "var(--red)", flexShrink: 0 }} />
+                          <span>{rlSimulation.metrics.warning}</span>
+                        </div>
+                      )}
+                      
                       <div className="metrics-grid">
                         <div className="card">
                           <span className="card-title">Исполнение (VWAP)</span>
