@@ -227,6 +227,12 @@ class MNAVModelPipeline:
                 loaded = joblib.load(self.model_path)
                 if isinstance(loaded, tuple) and len(loaded) == 4:
                     self.model, _, self.model_name, self.metrics = loaded
+                    # Clean up any potential NaN values from metrics dictionary for JSON compliance
+                    import math
+                    if isinstance(self.metrics, dict):
+                        for k, v in list(self.metrics.items()):
+                            if isinstance(v, float) and math.isnan(v):
+                                self.metrics[k] = 0.5
                 else:
                     self.model = loaded[0] if isinstance(loaded, tuple) else loaded
                     self.model_name = "Random Forest"
