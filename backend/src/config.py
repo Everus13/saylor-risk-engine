@@ -16,6 +16,16 @@ DEBT_SCHEDULE_PATH = os.path.join(CONFIG_DIR, "mstr_debt_schedule.json")
 LIGHTGBM_MODEL_PATH = os.path.join(DATA_DIR, "lgb_impact_model.bin")
 PYTORCH_MODEL_PATH = os.path.join(DATA_DIR, "torch_impact_model.pth")
 RL_MODEL_PATH = os.path.join(DATA_DIR, "rl_execution_model")
+RL_MODEL_PATH_STANDARD = os.path.join(DATA_DIR, "ppo_standard")
+RL_MODEL_PATH_STRESS = os.path.join(DATA_DIR, "ppo_stress")
+RL_MODEL_PATH_LIVE = os.path.join(DATA_DIR, "ppo_live")
+HISTORICAL_DATA_PATH = os.path.join(DATA_DIR, "btc_historical_2y.csv")
+MNAV_MODEL_PATH = os.path.join(DATA_DIR, "mnav_rf_model.bin")
+MNAV_HISTORY_PATH = os.path.join(DATA_DIR, "mnav_history_cache.csv")
+
+# MicroStrategy Constants
+MSTR_BTC_HOLDINGS_DEFAULT = 843775
+MSTR_SHARES_OUTSTANDING_DEFAULT = 333913000
 
 # Market Parameters
 BTC_TICKER = "BTC-USD"

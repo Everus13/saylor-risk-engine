@@ -288,10 +288,7 @@ class PriceImpactMLPipeline:
         logging.info(f"Saved PyTorch model to {PYTORCH_MODEL_PATH}")
 
     def load_models(self) -> None:
-        """Load pretrained LightGBM and PyTorch models."""
-        if os.path.exists(LIGHTGBM_MODEL_PATH):
-            self.best_lgb_models = joblib.load(LIGHTGBM_MODEL_PATH)
-            
+        """Load pretrained PyTorch model."""
         if os.path.exists(PYTORCH_MODEL_PATH):
             checkpoint = torch.load(PYTORCH_MODEL_PATH)
             self.best_pytorch_model = QuantileMLP(
@@ -302,45 +299,31 @@ class PriceImpactMLPipeline:
             self.best_pytorch_model.load_state_dict(checkpoint["model_state"])
             self.best_pytorch_model.eval()
 
-    def predict_impact(self, order_book: Dict[str, Any], sell_size: float, model_type: str = "lightgbm") -> Dict[float, float]:
+    def predict_impact(self, order_book: Dict[str, Any], sell_size: float, model_type: str = "pytorch") -> Dict[float, float]:
         """
         Predict price impact quantiles (10%, 50%, 90%) for a given order book and sell size.
         Returns a dictionary of predicted percentage drops.
         """
         feats = extract_features(order_book, sell_size).reshape(1, -1)
         
-        if model_type == "lightgbm":
-            if not self.best_lgb_models:
-                self.load_models()
-            if not self.best_lgb_models:
-                return {0.1: sell_size * 0.0005, 0.5: sell_size * 0.001, 0.9: sell_size * 0.002}
-                
-            return {
-                0.1: max(0.0, float(self.best_lgb_models[0.1].predict(feats)[0])),
-                0.5: max(0.0, float(self.best_lgb_models[0.5].predict(feats)[0])),
-                0.9: max(0.0, float(self.best_lgb_models[0.9].predict(feats)[0]))
-            }
+        # LightGBM is deprecated and removed from order book simulation. Fallback to PyTorch.
+        if self.best_pytorch_model is None:
+            self.load_models()
+        if self.best_pytorch_model is None:
+            return {0.1: sell_size * 0.0005, 0.5: sell_size * 0.001, 0.9: sell_size * 0.002}
             
-        elif model_type == "pytorch":
-            if self.best_pytorch_model is None:
-                self.load_models()
-            if self.best_pytorch_model is None:
-                return {0.1: sell_size * 0.0005, 0.5: sell_size * 0.001, 0.9: sell_size * 0.002}
-                
-            self.best_pytorch_model.eval()
-            with torch.no_grad():
-                tensor_feats = torch.tensor(feats)
-                preds = self.best_pytorch_model(tensor_feats).numpy().flatten()
-                
-            return {
-                0.1: max(0.0, float(preds[0])),
-                0.5: max(0.0, float(preds[1])),
-                0.9: max(0.0, float(preds[2]))
-            }
-        else:
-            raise ValueError(f"Unknown model_type: {model_type}")
+        self.best_pytorch_model.eval()
+        with torch.no_grad():
+            tensor_feats = torch.tensor(feats)
+            preds = self.best_pytorch_model(tensor_feats).numpy().flatten()
+            
+        return {
+            0.1: max(0.0, float(preds[0])),
+            0.5: max(0.0, float(preds[1])),
+            0.9: max(0.0, float(preds[2]))
+        }
 
-# --- Self-Test & Comparison Execution ---
+# --- Self-Test & Validation Execution ---
 if __name__ == "__main__":
     np.random.seed(42)
     random.seed(42)
@@ -352,17 +335,13 @@ if __name__ == "__main__":
     y_train, y_val = y[:split], y[split:]
     
     pipeline = PriceImpactMLPipeline()
-    pipeline.train_lightgbm_quantiles(X_train, y_train, X_val, y_val)
     pipeline.train_pytorch_quantiles(X_train, y_train, X_val, y_val)
     
-    logging.info("Model Comparison on Test Data...")
-    lgb_preds = {q: pipeline.best_lgb_models[q].predict(X_val) for q in [0.1, 0.5, 0.9]}
-    
+    logging.info("Model Validation on Test Data...")
     pipeline.best_pytorch_model.eval()
     with torch.no_grad():
         pytorch_preds = pipeline.best_pytorch_model(torch.tensor(X_val)).numpy()
         
     for i, q in enumerate([0.1, 0.5, 0.9]):
-        lgb_loss = pinball_loss_np(y_val.flatten(), lgb_preds[q], q)
         pytorch_loss = pinball_loss_np(y_val.flatten(), pytorch_preds[:, i], q)
-        logging.info(f"Quantile {q:.1f} Pinball Loss: LightGBM = {lgb_loss:.6f} | PyTorch = {pytorch_loss:.6f}")
+        logging.info(f"Quantile {q:.1f} Pinball Loss: PyTorch = {pytorch_loss:.6f}")

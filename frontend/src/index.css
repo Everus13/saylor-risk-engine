@@ -465,3 +465,22 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--gold);
   box-shadow: none;
 }
+
+@keyframes pulse {
+  0% {
+    opacity: 0.7;
+    box-shadow: 0 0 0 0 rgba(255, 23, 68, 0.4);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 0 6px rgba(255, 23, 68, 0);
+  }
+  100% {
+    opacity: 0.7;
+    box-shadow: 0 0 0 0 rgba(255, 23, 68, 0);
+  }
+}
+
+.bearish-alert {
+  animation: pulse 2s infinite ease-in-out;
+}
