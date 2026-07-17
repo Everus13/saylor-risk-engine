@@ -113,24 +113,34 @@ class RLExecutionTrainer:
             historical_prices=historical_prices
         )
 
-        # Linear decay learning rate schedule to stabilize training
-        def linear_schedule(initial_value: float):
-            def func(progress_remaining: float) -> float:
-                return progress_remaining * initial_value
-            return func
-
-        model = PPO(
-            "MlpPolicy",
-            env,
-            learning_rate=linear_schedule(lr),
-            n_steps=int(RL_CONFIG["n_steps"]),
-            batch_size=int(RL_CONFIG["batch_size"]),
-            n_epochs=15,
-            gamma=float(RL_CONFIG["gamma"]),
-            clip_range=0.1,        # Prevents large unstable policy shifts
-            ent_coef=0.015,        # Promotes exploration and prevents overfitting
-            verbose=1
-        )
+        # Configure model parameters
+        ppo_kwargs = {
+            "policy": "MlpPolicy",
+            "env": env,
+            "n_steps": int(RL_CONFIG["n_steps"]),
+            "batch_size": int(RL_CONFIG["batch_size"]),
+            "gamma": float(RL_CONFIG["gamma"]),
+            "verbose": 1
+        }
+        
+        if agent_type == "live":
+            # Real agent needs extra stability due to high exogenous price variance
+            # 1. Lower learning rate with linear decay
+            def linear_schedule(initial_value: float):
+                def func(progress_remaining: float) -> float:
+                    return progress_remaining * initial_value
+                return func
+            ppo_kwargs["learning_rate"] = linear_schedule(1e-4)
+            # 2. Entropy regularization to promote exploration and prevent early collapse
+            ppo_kwargs["ent_coef"] = 0.02
+            # 3. Smaller clip range for more controlled policy updates
+            ppo_kwargs["clip_range"] = 0.1
+            # 4. More epochs for sample reuse
+            ppo_kwargs["n_epochs"] = 15
+        else:
+            ppo_kwargs["learning_rate"] = lr
+            
+        model = PPO(**ppo_kwargs)
 
         model.learn(total_timesteps=timesteps)
 

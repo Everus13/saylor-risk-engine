@@ -52,9 +52,9 @@ PYTORCH_CONFIG = {
 
 # RL parameters
 RL_CONFIG = {
-    "total_timesteps": 15000,
-    "learning_rate": 1.5e-4,
-    "batch_size": 128,
+    "total_timesteps": 20000,
+    "learning_rate": 3e-4,
+    "batch_size": 64,
     "n_steps": 2048,
     "gamma": 0.99,
 }
