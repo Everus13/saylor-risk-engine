@@ -529,12 +529,12 @@ function App() {
                       <span className="card-delta negative">Базовый (ATM): 0.00 BTC</span>
                     </div>
                     <div className="card">
-                      <span className="card-title">Падение BTC (PyTorch Deep MLP)</span>
+                      <span className="card-title">Прогноз падения BTC (Количественная модель)</span>
                       <span className="card-value" style={{ color: financials.pytorch_impact_pct > 0 ? "var(--red)" : "var(--text-primary)" }}>
                         {financials.pytorch_impact_pct > 0 ? `-${financials.pytorch_impact_pct.toFixed(4)}%` : "0.0000%"}
                       </span>
                       {financials.pytorch_impact_worst_pct > 0 && (
-                        <span className="card-delta negative">Худший случай: -{financials.pytorch_impact_worst_pct.toFixed(4)}%</span>
+                        <span className="card-delta negative">Худший сценарий: -{financials.pytorch_impact_worst_pct.toFixed(4)}%</span>
                       )}
                     </div>
                   </div>
@@ -660,12 +660,12 @@ function App() {
                   {simImpactData && (
                     <>
                       <div className="table-container">
-                        <div className="section-title" style={{ padding: '16px 16px 0 16px', border: 'none' }}>Прогнозные интервалы падения цены (Квантили)</div>
+                        <div className="section-title" style={{ padding: '16px 16px 0 16px', border: 'none' }}>Сценарный анализ падения цены (Квантили)</div>
                         <table className="table">
                           <thead>
                             <tr>
                               <th>Сценарий импакта</th>
-                              <th>Нейросеть PyTorch Deep MLP</th>
+                              <th>Количественная модель импакта (MLP)</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -772,7 +772,7 @@ function App() {
                     <div className="form-group">
                       <label>Стратегия исполнения</label>
                       <select value={selectedStrat} onChange={(e) => setSelectedStrat(e.target.value)}>
-                        <option value="rl">Обучение с подкреплением (RL PPO Агент)</option>
+                        <option value="rl">Динамическая оптимизация (RL PPO Агент)</option>
                         <option value="twap">Равномерное капание (TWAP)</option>
                       </select>
                     </div>
@@ -781,9 +781,9 @@ function App() {
                       <div className="form-group">
                         <label>Выбор Агента</label>
                         <select value={agentType} onChange={(e) => setAgentType(e.target.value)}>
-                          <option value="standard">Стандартный PPO (PPO Standard)</option>
-                          <option value="stress">Стресс-Агент (PPO Stress / Шок-стакан)</option>
-                          <option value="live">Реальный Агент (PPO Live / 2Y История)</option>
+                          <option value="standard">Базовый PPO (Синтетические сценарии)</option>
+                          <option value="stress">Стресс-PPO (Сценарий низкой ликвидности)</option>
+                          <option value="live">Адаптивный PPO (На реальных котировках)</option>
                         </select>
                       </div>
                     )}
@@ -815,19 +815,19 @@ function App() {
 
                   {/* RL Training Console Panel */}
                   <div className="card" style={{ gap: 16 }}>
-                    <span className="section-title" style={{ border: 'none', paddingLeft: 0 }}>Обучение PPO агента</span>
+                    <span className="section-title" style={{ border: 'none', paddingLeft: 0 }}>Калибровка торгового агента</span>
                     
                     <div className="form-group">
-                      <label>Тип агента для обучения</label>
+                      <label>Тип агента для калибровки</label>
                       <select value={agentType} onChange={(e) => setAgentType(e.target.value)}>
-                        <option value="standard">Стандартный PPO (PPO Standard)</option>
-                        <option value="stress">Стресс-Агент (PPO Stress / Шок-стакан)</option>
-                        <option value="live">Реальный Агент (PPO Live / 2Y История)</option>
+                        <option value="standard">Базовый PPO (Синтетические сценарии)</option>
+                        <option value="stress">Стресс-PPO (Сценарий низкой ликвидности)</option>
+                        <option value="live">Адаптивный PPO (На реальных котировках)</option>
                       </select>
                     </div>
 
                     <div className="form-group">
-                      <label>Шагов обучения (Timesteps)</label>
+                      <label>Количество шагов калибровки</label>
                       <input 
                         type="number" 
                         value={timestepsInput} 
@@ -839,7 +839,7 @@ function App() {
 
                     <button className="btn btn-secondary" onClick={startRLAgentTraining} disabled={isTraining || loadingRLSim}>
                       {isTraining ? <Loader className="animate-spin" size={14} /> : <Play size={14} />}
-                      Начать обучение агента
+                      Запустить калибровку агента
                     </button>
 
                     {trainingLogs.length > 0 && (
@@ -998,28 +998,28 @@ function App() {
                     
                     {/* Model Training & Metrics Compare Card */}
                     <div className="card" style={{ gap: 16 }}>
-                      <span className="section-title" style={{ border: 'none', paddingLeft: 0 }}>Обучение и валидация ML-модели</span>
+                      <span className="section-title" style={{ border: 'none', paddingLeft: 0 }}>Калибровка и исторический бэктестинг моделей</span>
                       
                       <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: "1.5" }}>
-                        Бэкенд проводит соревнование (Backtesting) между классификатором <strong>Random Forest</strong> и <strong>LightGBM</strong> на 80/20 историческом разделении. В продакшн выбирается модель с наибольшим F1-Score.
+                        Система тестирует эффективность прогнозных алгоритмов <strong>Random Forest</strong> и <strong>LightGBM</strong> на исторических данных. В качестве рабочей выбирается модель с наибольшим коэффициентом надежности (F1-Score).
                       </p>
 
                       {mnavData.model_metrics && mnavData.model_metrics.chosen && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, backgroundColor: 'rgba(255,255,255,0.02)', padding: 12, borderRadius: 4, border: '1px solid var(--border-color)' }}>
-                          <span style={{ fontSize: 12, fontWeight: 'bold' }}>Результаты аудита моделей:</span>
+                          <span style={{ fontSize: 12, fontWeight: 'bold' }}>Результаты исторического бэктестинга:</span>
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                            <span>Выбранный чемпион:</span>
+                            <span>Рабочая модель:</span>
                             <strong style={{ color: 'var(--gold)' }}>{mnavData.model_metrics.chosen}</strong>
                           </div>
                           
                           <div style={{ borderTop: '1px solid #1e293b', paddingTop: 6, display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-secondary)' }}>
-                            <span>RF Accuracy:</span>
-                            <span>{(mnavData.model_metrics.rf_accuracy * 100).toFixed(1)}% | F1: {mnavData.model_metrics.rf_f1.toFixed(3)}</span>
+                            <span>RF Достоверность:</span>
+                            <span>{(mnavData.model_metrics.rf_accuracy * 100).toFixed(1)}% | Коэф. надежности: {mnavData.model_metrics.rf_f1.toFixed(3)}</span>
                           </div>
 
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-secondary)' }}>
-                            <span>LGBM Accuracy:</span>
-                            <span>{(mnavData.model_metrics.lgb_accuracy * 100).toFixed(1)}% | F1: {mnavData.model_metrics.lgb_f1.toFixed(3)}</span>
+                            <span>LGBM Достоверность:</span>
+                            <span>{(mnavData.model_metrics.lgb_accuracy * 100).toFixed(1)}% | Коэф. надежности: {mnavData.model_metrics.lgb_f1.toFixed(3)}</span>
                           </div>
                         </div>
                       )}
@@ -1029,7 +1029,7 @@ function App() {
                         try {
                           const res = await fetch(`${API_BASE}/mnav/train`, { method: 'POST' });
                           const report = await res.json();
-                          alert(`Обучение завершено!\nМодель-победитель: ${report.chosen}\nF1 RF: ${report.rf.f1_score.toFixed(3)} vs F1 LGBM: ${report.lgb.f1_score.toFixed(3)}`);
+                          alert(`Калибровка завершена!\nОптимальная модель: ${report.chosen}\nНадежность RF: ${report.rf.f1_score.toFixed(3)} vs LGBM: ${report.lgb.f1_score.toFixed(3)}`);
                           fetchMnavStatus();
                         } catch (e) {
                           console.error(e);
@@ -1038,7 +1038,7 @@ function App() {
                         }
                       }} disabled={trainingMnav}>
                         {trainingMnav ? <Loader className="animate-spin" size={14} /> : <Play size={14} />}
-                        Запустить аудит и переобучить модель
+                        Запустить тестирование и перекалибровку
                       </button>
                     </div>
 
