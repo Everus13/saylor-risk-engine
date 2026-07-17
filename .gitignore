@@ -1,15 +1,31 @@
 # Virtual Environment
 venv/
+.venv/
+env/
+ENV/
 
 # Python caching & bytecode
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 .ipynb_checkpoints/
 .pytest_cache/
 *.egg-info/
 backend/__pycache__/
 backend/src/__pycache__/
 backend/src/rl_agent/__pycache__/
+
+# IDEs & Editors
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+.project
+.settings/
 
 # Node / Frontend dependencies & builds
 node_modules/
@@ -19,6 +35,9 @@ dist/
 build/
 .env
 .env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
 # Databases and Local State
 backend/data/mstr_btc.db
@@ -28,3 +47,11 @@ backend/data/mstr_btc.db-shm
 
 # Streamlit legacy configs
 .streamlit/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
