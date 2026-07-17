@@ -63,6 +63,7 @@ class OptimalExecutionEnv(gym.Env):
 
     def reset(self, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None) -> Tuple[np.ndarray, Dict[str, Any]]:
         super().reset(seed=seed)
+        self.accumulated_impact = 0.0
         
         if self.mode == "historical" and self.historical_prices:
             # Sample a random starting index
@@ -176,23 +177,36 @@ class OptimalExecutionEnv(gym.Env):
             # Reduce inventory
             self.remaining_volume -= filled_qty
         
+        # OTC transactions have lower direct market impact on standard exchanges (e.g. 10x lower impact)
+        market_qty_effective = (sell_qty - sell_qty * (self.otc_pct / 100.0)) + 0.1 * (sell_qty * (self.otc_pct / 100.0))
+        volume_fraction = market_qty_effective / max(1e-8, self.total_volume)
+
         # Update market price
         if self.mode == "historical" and hasattr(self, "historical_trajectory"):
             next_idx = self.current_step + 1
             if next_idx < len(self.historical_trajectory):
-                self.mid_price = self.historical_trajectory[next_idx]
+                base_price = self.historical_trajectory[next_idx]
             else:
-                self.mid_price = self.historical_trajectory[-1]
+                base_price = self.historical_trajectory[-1]
+                
+            # Accumulate permanent price impact from sales on top of historical trajectory
+            if not hasattr(self, "accumulated_impact"):
+                self.accumulated_impact = 0.0
+            
+            # Standard permanent price impact: 1.5% drop for full volume sold at once
+            market_impact_impact = volume_fraction * 0.015 * base_price
+            self.accumulated_impact += market_impact_impact
+            
+            self.mid_price = max(1000.0, base_price - self.accumulated_impact)
         else:
             # Update market price (Random walk / GBM with drift from sales)
-            # OTC transactions have lower direct market impact on standard exchanges (e.g. 10x lower impact)
-            market_qty_effective = (sell_qty - sell_qty * (self.otc_pct / 100.0)) + 0.1 * (sell_qty * (self.otc_pct / 100.0))
-            
             if self.mode == "stress":
-                market_impact_impact = market_qty_effective * 0.0005 # 5x higher impact
-                price_drift = -market_impact_impact + random.normalvariate(-self.mid_price * 0.005, self.mid_price * 0.002) # panic sell drift
+                # Stress mode: 5.0% permanent impact if full volume is sold at once
+                market_impact_impact = volume_fraction * 0.05 * self.mid_price
+                price_drift = -market_impact_impact + random.normalvariate(-self.mid_price * 0.005, self.mid_price * 0.003)
             else:
-                market_impact_impact = market_qty_effective * 0.0001
+                # Standard mode: 1.5% permanent impact if full volume is sold at once
+                market_impact_impact = volume_fraction * 0.015 * self.mid_price
                 price_drift = -market_impact_impact + random.normalvariate(0, self.mid_price * 0.001)
                 
             self.mid_price = max(1000.0, self.mid_price + price_drift)
@@ -217,7 +231,8 @@ class OptimalExecutionEnv(gym.Env):
             execution_cost = (self.arrival_price - vwap) / self.arrival_price
             execution_reward = -execution_cost * (filled_qty / self.total_volume) * 100.0
             
-        inventory_penalty = -0.05 * (self.remaining_volume / self.total_volume)
+        # Moderate risk aversion inventory penalty (0.01 instead of 0.05) to avoid dumping behavior
+        inventory_penalty = -0.01 * (self.remaining_volume / self.total_volume)
         
         shortfall_penalty = 0.0
         if is_last_step and self.remaining_volume > 0:
