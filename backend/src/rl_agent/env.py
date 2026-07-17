@@ -32,7 +32,12 @@ class OptimalExecutionEnv(gym.Env):
         self.total_volume: float = total_volume
         self.total_steps: int = total_steps
         self.starting_mid_price: float = mid_price
-        self.depth_scale: float = depth_scale
+        
+        # Ensure depth scale is dynamically sufficient for larger order sizes (minimum of avg step volume * 1.5)
+        # to prevent math exhaustion of standard L2 depth
+        avg_step_vol = total_volume / max(1, total_steps)
+        self.depth_scale: float = max(depth_scale, avg_step_vol * 1.5)
+        
         self.otc_pct: float = otc_pct
         self.mode: str = mode
         self.historical_prices: Optional[List[float]] = historical_prices
@@ -169,6 +174,15 @@ class OptimalExecutionEnv(gym.Env):
                 filled_mkt = float(sim["filled_amount"])
                 total_value += filled_mkt * vwap_mkt
                 filled_qty += filled_mkt
+                
+                # If market_qty exceeds order book depth, execute excess at a 5% discount penalty price
+                if filled_mkt < market_qty:
+                    unfilled_qty = market_qty - filled_mkt
+                    bids_list = self.order_book.get("bids", [])
+                    worst_bid = float(bids_list[-1][0]) if len(bids_list) > 0 else best_bid
+                    penalty_price = worst_bid * 0.95
+                    total_value += unfilled_qty * penalty_price
+                    filled_qty += unfilled_qty
             
             vwap = total_value / filled_qty if filled_qty > 0 else self.mid_price
             slippage_pct = ((best_bid - vwap) / best_bid) * 100.0 if best_bid > 0 and vwap > 0 else 0.0
