@@ -263,8 +263,24 @@ def simulate_rl(data: RLSimulationRequest):
             long_term_debt=long_term_debt
         )
 
+        # Calculate balance-sheet Liquidity Urgency factor to scale forced sale probability
+        short_term_debt = float(sec_facts.get("long_term_debt_current", 0.0))
+        if short_term_debt <= 0:
+            short_term_debt = long_term_debt * 0.02
+            
+        shortfall = max(0.0, short_term_debt - cash_reserve)
+        
+        import math
+        if shortfall <= 0:
+            liquidity_urgency = 0.15
+        else:
+            ratio = shortfall / (shortfall + cash_reserve)
+            liquidity_urgency = 0.15 + 0.70 * ratio
+            
+        forced_sale_prob = float(prob * liquidity_urgency)
+
         # Apply risk multiplier
-        effective_volume = data.total_volume * (1.0 + prob)
+        effective_volume = data.total_volume * (1.0 + forced_sale_prob)
 
         # Run selected strategy simulation
         df_strat, metrics_strat = rl_trainer.run_simulation(
@@ -488,6 +504,25 @@ def get_mnav_status():
             long_term_debt=long_term_debt
         )
         
+        # Calculate balance-sheet Liquidity Urgency factor to scale forced sale probability
+        short_term_debt = float(sec_facts.get("long_term_debt_current", 0.0))
+        if short_term_debt <= 0:
+            # Fallback baseline: 2% of total long term debt is due soon
+            short_term_debt = long_term_debt * 0.02
+            
+        shortfall = max(0.0, short_term_debt - cash_reserve)
+        
+        import math
+        if shortfall <= 0:
+            # Low urgency if cash covers short-term debt
+            liquidity_urgency = 0.15
+        else:
+            ratio = shortfall / (shortfall + cash_reserve)
+            # Urgency scales between 15% and 85%
+            liquidity_urgency = 0.15 + 0.70 * ratio
+            
+        forced_sale_prob = float(prob * liquidity_urgency)
+        
         pipeline.load_model()
         model_name = getattr(pipeline, "model_name", "Random Forest")
         model_metrics = getattr(pipeline, "metrics", {})
@@ -502,7 +537,7 @@ def get_mnav_status():
             "implied_btc_per_share": feats["implied_btc_per_share"],
             "mnav_per_share": feats["mnav_per_share"],
             "premium_pct": feats["premium_pct"],
-            "collapse_probability": prob,
+            "collapse_probability": forced_sale_prob,  # output scaled realistic probability
             "vix": vix_price,
             "dxy": dxy_price,
             "tnx": tnx_price,

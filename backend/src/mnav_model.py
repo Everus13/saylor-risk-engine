@@ -36,7 +36,7 @@ class MNAVModelPipeline:
         all_series = {}
 
         for key, ticker in tickers.items():
-            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?range=2y&interval=1d"
+            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?range=5y&interval=1d"
             try:
                 res = requests.get(url, headers=headers, timeout=10)
                 if res.status_code == 200:
@@ -105,6 +105,35 @@ class MNAVModelPipeline:
 
         return df
 
+    def augment_data(self, X: np.ndarray, y: np.ndarray, n_samples: int = 5000) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Generate synthetic samples by resampling the original dataset with replacement
+        and adding standard deviation scaled Gaussian noise (Jittering).
+        """
+        if len(X) == 0:
+            return X, y
+            
+        indices = np.random.choice(len(X), size=n_samples, replace=True)
+        aug_X = X[indices].copy()
+        aug_y = y[indices].copy()
+        
+        # Calculate standard deviations of real features for scaling noise
+        stds = np.std(X, axis=0)
+        # Avoid zero division or scaling issues
+        stds = np.where(stds == 0, 1e-4, stds)
+        
+        for col_idx in range(X.shape[1]):
+            noise = np.random.normal(0, 0.05 * stds[col_idx], size=n_samples)
+            aug_X[:, col_idx] += noise
+            
+        # Clip features to physical limits
+        # Col mapping: 0=VIX, 1=DXY, 2=TNX, 3=premium_zscore, 4=macro_pressure_idx
+        aug_X[:, 0] = np.clip(aug_X[:, 0], 5.0, 100.0)  # VIX
+        aug_X[:, 1] = np.clip(aug_X[:, 1], 50.0, 150.0) # DXY
+        aug_X[:, 2] = np.clip(aug_X[:, 2], 0.0, 15.0)   # TNX
+        
+        return aug_X, aug_y
+
     def train_pipeline(
         self,
         btc_holdings: float = MSTR_BTC_HOLDINGS_DEFAULT,
@@ -155,8 +184,11 @@ class MNAVModelPipeline:
             X_train_cv, X_val_cv = X[train_idx], X[val_idx]
             y_train_cv, y_val_cv = y[train_idx], y[val_idx]
             
+            # Augment training folds using synthetic generator to n_samples=5000
+            X_train_cv_aug, y_train_cv_aug = self.augment_data(X_train_cv, y_train_cv, n_samples=5000)
+            
             rf_cv = RandomForestClassifier(n_estimators=100, max_depth=5, min_samples_leaf=5, random_state=42)
-            rf_cv.fit(X_train_cv, y_train_cv)
+            rf_cv.fit(X_train_cv_aug, y_train_cv_aug)
             preds = rf_cv.predict(X_val_cv)
             
             rf_acc_scores.append(accuracy_score(y_val_cv, preds))
@@ -183,10 +215,13 @@ class MNAVModelPipeline:
                 X_train_cv, X_val_cv = X[train_idx], X[val_idx]
                 y_train_cv, y_val_cv = y[train_idx], y[val_idx]
                 
+                # Augment training folds using synthetic generator to n_samples=5000
+                X_train_cv_aug, y_train_cv_aug = self.augment_data(X_train_cv, y_train_cv, n_samples=5000)
+                
                 lgb_cv = LGBMClassifier(
                     n_estimators=100, learning_rate=0.03, max_depth=4, min_child_samples=10, verbose=-1, random_state=42
                 )
-                lgb_cv.fit(X_train_cv, y_train_cv)
+                lgb_cv.fit(X_train_cv_aug, y_train_cv_aug)
                 preds = lgb_cv.predict(X_val_cv)
                 
                 lgb_acc_scores.append(accuracy_score(y_val_cv, preds))
@@ -216,6 +251,7 @@ class MNAVModelPipeline:
 
         # Retrain selected model on full dataset
         try:
+            X_aug, y_aug = self.augment_data(X, y, n_samples=10000)
             if selected_model_type == "Random Forest":
                 self.model = RandomForestClassifier(n_estimators=100, max_depth=5, min_samples_leaf=5, random_state=42)
             else:
@@ -224,7 +260,7 @@ class MNAVModelPipeline:
                     n_estimators=100, learning_rate=0.03, max_depth=4, min_child_samples=10, verbose=-1, random_state=42
                 )
                 
-            self.model.fit(X, y)
+            self.model.fit(X_aug, y_aug)
             
             # Save model with joblib
             import joblib
