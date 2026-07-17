@@ -113,13 +113,22 @@ class RLExecutionTrainer:
             historical_prices=historical_prices
         )
 
+        # Linear decay learning rate schedule to stabilize training
+        def linear_schedule(initial_value: float):
+            def func(progress_remaining: float) -> float:
+                return progress_remaining * initial_value
+            return func
+
         model = PPO(
             "MlpPolicy",
             env,
-            learning_rate=lr,
+            learning_rate=linear_schedule(lr),
             n_steps=int(RL_CONFIG["n_steps"]),
             batch_size=int(RL_CONFIG["batch_size"]),
+            n_epochs=15,
             gamma=float(RL_CONFIG["gamma"]),
+            clip_range=0.1,        # Prevents large unstable policy shifts
+            ent_coef=0.015,        # Promotes exploration and prevents overfitting
             verbose=1
         )
 
