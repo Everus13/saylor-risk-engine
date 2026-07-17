@@ -97,8 +97,10 @@ class MNAVModelPipeline:
         # Macro indicators
         df["macro_pressure_idx"] = (df["VIX"] / 20.0) + (df["TNX"] / 4.0)
 
-        # Target Label: 1 if Premium falls below 5% (0.05) within the next 30 days, else 0
-        future_min_premium = df["premium"].iloc[::-1].rolling(window=30, min_periods=1).min().iloc[::-1]
+        # Target Label: 1 if Premium falls below 5% (0.05) within the next 30 days (excluding today, to avoid leakage), else 0
+        # By shifting by -1, we look at days t+1 to t+30
+        future_min_premium = df["premium"].shift(-1).iloc[::-1].rolling(window=30, min_periods=1).min().iloc[::-1]
+        future_min_premium = future_min_premium.fillna(df["premium"])
         df["target"] = (future_min_premium < 0.05).astype(int)
 
         return df
@@ -124,57 +126,81 @@ class MNAVModelPipeline:
         )
         df.to_csv(self.history_path)
 
-        # Define features
+        # Define features (excluding absolute premium SMAs to avoid trivial distance-to-default leakage)
         feature_cols = [
             "VIX", "DXY", "TNX", 
-            "premium_sma_7", "premium_sma_14", "premium_sma_30", "premium_zscore", "macro_pressure_idx"
+            "premium_zscore", "macro_pressure_idx"
         ]
 
-        X = df[feature_cols].fillna(0.0).values
-        y = df["target"].values
+        # Filter training to non-collapsed states (premium >= 5%) to predict onset of collapse
+        filtered_df = df[df["premium"] >= 0.05]
+        if len(filtered_df) < 50:
+            logging.warning("Too few samples with premium >= 5%. Falling back to full dataset.")
+            filtered_df = df
 
-        # 80/20 Chronological Split
-        split_idx = int(len(X) * 0.8)
-        X_train, X_test = X[:split_idx], X[split_idx:]
-        y_train, y_test = y[:split_idx], y[split_idx:]
+        X = filtered_df[feature_cols].fillna(0.0).values
+        y = filtered_df["target"].values
 
+        # Stratified K-Fold Cross-Validation (K=5) to prevent overfitting and resolve homogeneous test split
+        from sklearn.model_selection import StratifiedKFold
         from sklearn.ensemble import RandomForestClassifier
         from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
-        
-        # 1. Evaluate Random Forest
-        rf_test = RandomForestClassifier(n_estimators=150, random_state=42)
-        rf_test.fit(X_train, y_train)
-        rf_preds = rf_test.predict(X_test)
-        
         import math
-        try:
-            rf_probs = rf_test.predict_proba(X_test)[:, 1]
-            rf_auc = float(roc_auc_score(y_test, rf_probs))
-            if math.isnan(rf_auc):
-                rf_auc = 0.5
-        except Exception:
-            rf_auc = 0.5
+        
+        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+        
+        # 1. Evaluate Random Forest (with regularization: max_depth=5, min_samples_leaf=5 to prevent overfitting)
+        rf_acc_scores, rf_f1_scores, rf_auc_scores = [], [], []
+        for train_idx, val_idx in skf.split(X, y):
+            X_train_cv, X_val_cv = X[train_idx], X[val_idx]
+            y_train_cv, y_val_cv = y[train_idx], y[val_idx]
             
-        rf_acc = float(accuracy_score(y_test, rf_preds))
-        rf_f1 = float(f1_score(y_test, rf_preds, zero_division=0))
+            rf_cv = RandomForestClassifier(n_estimators=100, max_depth=5, min_samples_leaf=5, random_state=42)
+            rf_cv.fit(X_train_cv, y_train_cv)
+            preds = rf_cv.predict(X_val_cv)
+            
+            rf_acc_scores.append(accuracy_score(y_val_cv, preds))
+            rf_f1_scores.append(f1_score(y_val_cv, preds, zero_division=0))
+            try:
+                probs = rf_cv.predict_proba(X_val_cv)[:, 1]
+                auc = roc_auc_score(y_val_cv, probs)
+                if not math.isnan(auc):
+                    rf_auc_scores.append(auc)
+            except Exception:
+                pass
+                
+        rf_acc = float(np.mean(rf_acc_scores)) if rf_acc_scores else 0.0
+        rf_f1 = float(np.mean(rf_f1_scores)) if rf_f1_scores else 0.0
+        rf_auc = float(np.mean(rf_auc_scores)) if rf_auc_scores else 0.5
 
-        # 2. Evaluate LightGBM
+        # 2. Evaluate LightGBM (with regularization: max_depth=4, min_child_samples=10, learning_rate=0.03)
         lgb_acc, lgb_f1, lgb_auc = 0.0, 0.0, 0.5
         lgb_trained = False
         try:
             from lightgbm import LGBMClassifier
-            lgb_test = LGBMClassifier(n_estimators=150, learning_rate=0.05, verbose=-1, random_state=42)
-            lgb_test.fit(X_train, y_train)
-            lgb_preds = lgb_test.predict(X_test)
-            try:
-                lgb_probs = lgb_test.predict_proba(X_test)[:, 1]
-                lgb_auc = float(roc_auc_score(y_test, lgb_probs))
-                if math.isnan(lgb_auc):
-                    lgb_auc = 0.5
-            except Exception:
-                lgb_auc = 0.5
-            lgb_acc = float(accuracy_score(y_test, lgb_preds))
-            lgb_f1 = float(f1_score(y_test, lgb_preds, zero_division=0))
+            lgb_acc_scores, lgb_f1_scores, lgb_auc_scores = [], [], []
+            for train_idx, val_idx in skf.split(X, y):
+                X_train_cv, X_val_cv = X[train_idx], X[val_idx]
+                y_train_cv, y_val_cv = y[train_idx], y[val_idx]
+                
+                lgb_cv = LGBMClassifier(
+                    n_estimators=100, learning_rate=0.03, max_depth=4, min_child_samples=10, verbose=-1, random_state=42
+                )
+                lgb_cv.fit(X_train_cv, y_train_cv)
+                preds = lgb_cv.predict(X_val_cv)
+                
+                lgb_acc_scores.append(accuracy_score(y_val_cv, preds))
+                lgb_f1_scores.append(f1_score(y_val_cv, preds, zero_division=0))
+                try:
+                    probs = lgb_cv.predict_proba(X_val_cv)[:, 1]
+                    auc = roc_auc_score(y_val_cv, probs)
+                    if not math.isnan(auc):
+                        lgb_auc_scores.append(auc)
+                except Exception:
+                    pass
+            lgb_acc = float(np.mean(lgb_acc_scores)) if lgb_acc_scores else 0.0
+            lgb_f1 = float(np.mean(lgb_f1_scores)) if lgb_f1_scores else 0.0
+            lgb_auc = float(np.mean(lgb_auc_scores)) if lgb_auc_scores else 0.5
             lgb_trained = True
         except Exception as e:
             logging.warning(f"LightGBM evaluation failed: {e}. RF will be used exclusively.")
@@ -191,10 +217,12 @@ class MNAVModelPipeline:
         # Retrain selected model on full dataset
         try:
             if selected_model_type == "Random Forest":
-                self.model = RandomForestClassifier(n_estimators=150, random_state=42)
+                self.model = RandomForestClassifier(n_estimators=100, max_depth=5, min_samples_leaf=5, random_state=42)
             else:
                 from lightgbm import LGBMClassifier
-                self.model = LGBMClassifier(n_estimators=150, learning_rate=0.05, verbose=-1, random_state=42)
+                self.model = LGBMClassifier(
+                    n_estimators=100, learning_rate=0.03, max_depth=4, min_child_samples=10, verbose=-1, random_state=42
+                )
                 
             self.model.fit(X, y)
             
@@ -322,10 +350,13 @@ class MNAVModelPipeline:
 
         # Predict probability
         prob = 0.0
-        if self.model is not None:
+        if current_premium < 0.05:
+            # Deterministic rule: if premium is already collapsed (< 5%), probability of collapse is 100%
+            prob = 1.0
+        elif self.model is not None:
             try:
                 features_arr = np.array([[
-                    vix, dxy, tnx, p_sma7, p_sma14, p_sma30, p_zscore, macro_pressure
+                    vix, dxy, tnx, p_zscore, macro_pressure
                 ]])
                 prob = float(self.model.predict_proba(features_arr)[0][1])
             except Exception as e:
